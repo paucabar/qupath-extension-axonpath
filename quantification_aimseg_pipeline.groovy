@@ -33,7 +33,7 @@ import java.lang.Math
  
 Collection<PathObject> removeChildless() {
     // Get all Fibre objects
-    def fibre_objects = getAnnotationObjects().findAll { it.getPathClass() == getPathClass("Fibre") }
+    def fibre_objects = getDetectionObjects().findAll { it.getPathClass() == getPathClass("Fibre") }
     
     // Create a map to store Fibre objects and their child objects
     def validFibreToChildrenMap = [:]
@@ -96,10 +96,10 @@ void computeFeatures(imageData) {
     // Use the pixel size (assuming isotropic calibration)
     def pixelSizeSquaredMicrons = pixelHeightMicrons * pixelWidthMicrons
     
-    parentAnnotations = getAnnotationObjects().findAll{it.getPathClass() == getPathClass("Fibre")}
+    parentDetections = getDetectionObjects().findAll{it.getPathClass() == getPathClass("Fibre")}
     def roiTools = new RoiTools()
     
-    parentAnnotations.each { parent ->
+    parentDetections.each { parent ->
     
         // define metrics
         float axon_area = 0
@@ -111,13 +111,13 @@ void computeFeatures(imageData) {
         float fibre_circularity = 0
         float fibre_solidity = 0
     
-        childAnnotations = parent.getChildObjects()
-        childAnnotations.each { child ->
+        childDetections = parent.getChildObjects()
+        childDetections.each { child ->
             inner_region_area += child.getROI().getArea() * pixelSizeSquaredMicrons
-            grandchildAnnotations = child.getChildObjects()
-            axon_objects = grandchildAnnotations.size()
+            grandchildDetections = child.getChildObjects()
+            axon_objects = grandchildDetections.size()
             
-            grandchildAnnotations.each { grandchild ->
+            grandchildDetections.each { grandchild ->
                 axon_area += grandchild.getROI().getArea() * pixelSizeSquaredMicrons
             }
         }

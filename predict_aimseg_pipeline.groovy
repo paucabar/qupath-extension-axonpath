@@ -9,10 +9,6 @@
  * Prior to running this script, ensure that the DJL extension is installed in QuPath 
  * and PyTorch has been downloaded – see https://qupath.readthedocs.io/en/stable/docs/deep/djl.html
  */
- 
- /*
-  * TODO: currently the script works with annotation objects, but it should use detection objects
-  */ 
 
 
 /**
@@ -199,18 +195,18 @@ void processSDT(ImagePlus imp, String className, int channel, double min_thresho
     boolean conn8 = true
     Watershed.doWatershed(ip, ipLabels, minIntensity, conn8)
     
-    // Create annotation objects from label image
+    // Create detection objects from label image
     def roiDetected = RoiLabeling.labelsToFilledRoiList(ipLabels, conn8)
     
     // Convert ImageJ ROIs to QuPath ROIs
     ImagePlane plane = ImagePlane.getDefaultPlane()
     Calibration cal = imp.getCalibration()
     
-    // Convert ImageJ ROIs to QuPath annotations
+    // Convert ImageJ ROIs to QuPath detections
     def pathDetectedObjects = roiDetected.collect { roiIJ ->
         def roi = IJTools.convertToROI(roiIJ, cal, downsample, plane);
-        def annotation = PathObjects.createAnnotationObject(roi.translate(translateX, translateY), getPathClass(className))
-        return annotation
+        def detection = PathObjects.createDetectionObject(roi.translate(translateX, translateY), getPathClass(className))
+        return detection
     }
     addObjects(pathDetectedObjects)
 }
@@ -235,14 +231,14 @@ void processSemantic(ImagePlus imp, String className, int channel, int label, do
     def roiList = rm.getRoisAsArray()
     rm.close()
 
-    // Convert ImageJ ROIs to QuPath annotations
+    // Convert ImageJ ROIs to QuPath detections
     ImagePlane plane = ImagePlane.getDefaultPlane()
     Calibration cal = imp.getCalibration()
     
     def pathDetectedObjects = roiList.collect { roi ->
         def roiIJ = IJTools.convertToROI(roi, cal, downsample, plane)
-        def annotation = PathObjects.createAnnotationObject(roiIJ.translate(translateX, translateY), getPathClass(className))
-        return annotation
+        def detection = PathObjects.createDetectionObject(roiIJ.translate(translateX, translateY), getPathClass(className))
+        return detection
     }
     addObjects(pathDetectedObjects)
 }
@@ -277,8 +273,8 @@ def establishHierarchyBasedOnIoO2(objectsPrimary, objectsSecondary) {
                     def intersectionGeometry = parentGeometry.intersection(secondaryGeometry)
                     def intersectionROI = GeometryTools.geometryToROI(intersectionGeometry, secondaryObject.getROI().getImagePlane())
                     
-                    // Create the intersection object as an annotation with the same PathClass
-                    def intersectionObject = PathObjects.createAnnotationObject(intersectionROI, secondaryObject.getPathClass())
+                    // Create the intersection object as a detection with the same PathClass
+                    def intersectionObject = PathObjects.createDetectionObject(intersectionROI, secondaryObject.getPathClass())
                     
                     // Replace the secondary object with the intersection object
                     pathHierarchy.removeObject(secondaryObject, true) // Remove the original object
@@ -361,9 +357,9 @@ processSDT(impOutput, "Axon", 3, min_threshold, max_threshold, downsample, image
 processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, imageData, request, translateX, translateY)
 
 // Establish hierarchy
-def fibre_objects = getAnnotationObjects().findAll{(it.getPathClass() == getPathClass("Fibre")) }
-def axon_objects = getAnnotationObjects().findAll{(it.getPathClass() == getPathClass("Axon")) }
-def inner_tongue_objects = getAnnotationObjects().findAll {it.getPathClass() == getPathClass("Inner Tongue")}
+def fibre_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Fibre")) }
+def axon_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Axon")) }
+def inner_tongue_objects = getDetectionObjects().findAll {it.getPathClass() == getPathClass("Inner Tongue")}
 
 println "Comparing ${fibre_objects.size()} fibre objects vs ${inner_tongue_objects.size()} inner tongue objects"
 establishHierarchyBasedOnIoO2 (fibre_objects, inner_tongue_objects)
