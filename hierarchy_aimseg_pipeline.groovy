@@ -132,24 +132,43 @@ Collection<PathObject> removeParentless (objects) {
  * Pipeline to update hierarchy
  */
 
+// Set microscopy data
+def micData = "EM" // "EM or BF"
 
 // Establish hierarchy
-def fibre_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Fibre")) }
-def axon_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Axon")) }
-def inner_tongue_objects = getDetectionObjects().findAll {it.getPathClass() == getPathClass("Inner Tongue")}
+Collection<PathObject> fibre_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Fibre")) }
+Collection<PathObject> axon_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Axon")) }
+Collection<PathObject> inner_tongue_objects
+if (micData == "EM") {
+    inner_tongue_objects = getDetectionObjects().findAll {it.getPathClass() == getPathClass("Inner Tongue")}
+    println inner_tongue_objects
+}
 
-println "Comparing ${fibre_objects.size()} fibre objects vs ${inner_tongue_objects.size()} inner tongue objects"
-removeObjects(inner_tongue_objects, true)
-establishHierarchyBasedOnIoO2 (fibre_objects, inner_tongue_objects)
-
-println "Comparing ${inner_tongue_objects.size()} inner tongue objects vs ${axon_objects.size()} axon objects"
-inner_tongue_objects = getDetectionObjects().findAll {it.getPathClass() == getPathClass("Inner Tongue")} // updated collection
-removeObjects(axon_objects, true)
-establishHierarchyBasedOnIoO2 (inner_tongue_objects, axon_objects)
+if (micData == "EM") {
+    println "Comparing ${fibre_objects.size()} fibre objects vs ${inner_tongue_objects.size()} inner tongue objects"
+    removeObjects(inner_tongue_objects, true)
+    establishHierarchyBasedOnIoO2 (fibre_objects, inner_tongue_objects)
+    inner_tongue_objects = getDetectionObjects().findAll {it.getPathClass() == getPathClass("Inner Tongue")} // updated collection
+    
+    println "Comparing ${inner_tongue_objects.size()} inner tongue objects vs ${axon_objects.size()} axon objects"
+    removeObjects(axon_objects, true)
+    establishHierarchyBasedOnIoO2 (inner_tongue_objects, axon_objects)
+    axon_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Axon")) } // update collection
+} else if (micData == "BF") {
+    println "Comparing ${fibre_objects.size()} fibre objects vs ${axon_objects.size()} axon objects"
+    removeObjects(axon_objects, true)
+    establishHierarchyBasedOnIoO2 (fibre_objects, axon_objects)
+    axon_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Axon")) } // update collection
+}
 
 // Remove objects with an invalid hierarchy
-Collection<PathObject> combined_objects = axon_objects + inner_tongue_objects
-Collection<PathObject> invalidParentlessObjects = removeParentless (combined_objects) // Storing invalid objects, could be useful for semi-automated annotation
+if (micData == "EM") {
+    Collection<PathObject> combined_objects = axon_objects + inner_tongue_objects
+    Collection<PathObject> invalidParentlessObjects = removeParentless (combined_objects) // Storing invalid objects, could be useful for semi-automated annotation
+} else if (micData == "BF") {
+    Collection<PathObject> invalidParentlessObjects = removeParentless (axon_objects) // Storing invalid objects, could be useful for semi-automated annotation
+}
+
 
  // Remove objects invalid for quantification
 Collection<PathObject> invalidFibreObjects = removeChildless() // Storing invalid objects, could be useful for semi-automated annotation
