@@ -11,6 +11,7 @@
 import org.locationtech.jts.geom.Geometry
 import qupath.lib.objects.hierarchy.PathObjectHierarchy
 import qupath.lib.objects.PathObjects
+import qupath.lib.objects.PathObjects
 
 import static qupath.lib.gui.scripting.QPEx.*
 
@@ -24,10 +25,10 @@ def establishHierarchyBasedOnIoO2(objectsPrimary, objectsSecondary) {
     // Initialise the PathObjectHierarchy
     def pathHierarchy = new PathObjectHierarchy()
 
-    objectsPrimary.eachWithIndex { parentObject, indexPrimary ->
+    objectsPrimary.each { parentObject ->
         Geometry parentGeometry = parentObject.getROI().getGeometry()
         
-        objectsSecondary.eachWithIndex { secondaryObject, indexSecondary ->
+        objectsSecondary.each { secondaryObject ->
             Geometry secondaryGeometry = secondaryObject.getROI().getGeometry()
             float intersectionArea = parentGeometry.intersection(secondaryGeometry).getArea()
             
@@ -38,6 +39,7 @@ def establishHierarchyBasedOnIoO2(objectsPrimary, objectsSecondary) {
                 
                 // Establish hierarchy directly if IoO2 == 1
                 if (ioo2 == 1) {
+                    pathHierarchy.addObject(secondaryObject, false) // Add the secondary object
                     pathHierarchy.addObjectBelowParent(parentObject, secondaryObject, true)
                 }
                 // Replace secondary object with intersection and establish hierarchy if 0.9 < IoO2 < 1
@@ -49,23 +51,77 @@ def establishHierarchyBasedOnIoO2(objectsPrimary, objectsSecondary) {
                     def intersectionObject = PathObjects.createDetectionObject(intersectionROI, secondaryObject.getPathClass())
                     
                     // Replace the secondary object with the intersection object
-                    pathHierarchy.removeObject(secondaryObject, true) // Remove the original object
+                    //pathHierarchy.removeObject(secondaryObject, false) // Remove the original object
                     pathHierarchy.addObject(intersectionObject, false) // Add the intersection object
                     
                     // Establish the hierarchy
-                    pathHierarchy.addObjectBelowParent(parentObject, intersectionObject, true)
+                    pathHierarchy.addObjectBelowParent(parentObject, intersectionObject, false) // true to fireUpdate
                 }
             }
         }
     }
+    
+    fireHierarchyUpdate()
+}
+
+
+/**
+ * This function processes Fibre objects in QuPath by verifying and filtering their hierarchical relationships.
+ * It identifies child objects up to two levels deep, ensuring that first-level children belong to the "Inner Tongue"
+ * class and second-level children belong to the "Axon" class. Fibre objects that lack at least one "Inner Tongue"
+ * child and one "Axon" descendant are removed from the hierarchy, along with their associated child objects.
+ * 
+ * The function retains only valid Fibre objects with meaningful relationships and removes invalid ones,
+ * ensuring accurate and biologically relevant data organisation.
+ */
+ 
+Collection<PathObject> removeChildless() {
+    // Get all Fibre objects
+    def fibre_objects = getDetectionObjects().findAll { it.getPathClass() == getPathClass("Fibre") }
+    
+    // Create a map to store Fibre objects and their child objects
+    def validFibreToChildrenMap = [:]
+    
+    // Iterate through each Fibre object
+    fibre_objects.each { fibre ->
+        // Get the first level of child objects (filter by "Inner Tongue" class)
+        def firstLevelChildren = fibre.getChildObjects().findAll { it.getPathClass() == getPathClass("Inner Tongue") }
+    
+        // Get the second level of child objects from first-level children (filter by "Axon" class)
+        def secondLevelChildren = firstLevelChildren.collectMany { it.getChildObjects() }
+                                                     .findAll { it.getPathClass() == getPathClass("Axon") }
+    
+        // Check if the Fibre object has at least one "Inner Tongue" child and one "Axon" child
+        if (firstLevelChildren && secondLevelChildren) {
+            // Combine the valid first and second-level children into a single list
+            def allValidChildren = firstLevelChildren + secondLevelChildren
+    
+            // Store the Fibre object and its valid children in the map
+            validFibreToChildrenMap[fibre] = allValidChildren
+        }
+    }
+    
+    // Output the results for debugging or further processing
+    println "Valid Fibre objects and their children:"
+    validFibreToChildrenMap.each { fibre, children ->
+        println "Fibre: ${fibre.getID()} has ${children.size()} valid child objects ${children}"
+    }
+    
+    // Remove invalid Fibre objects and their children
+    def invalidFibreObjects = fibre_objects - validFibreToChildrenMap.keySet()
+    println "Removing ${invalidFibreObjects.size()} invalid Fibre objects..."
+    removeObjects(invalidFibreObjects, false) // true to remove chilfren
+    
+    return invalidFibreObjects
 }
 
 // Method to identify all the objects with no parent object
 
-def findParentless (objects) {
+Collection<PathObject> removeParentless (objects) {
     println "Checking ${objects.size()} objects"
     def parentless = objects.findAll { it.getLevel() == 1 } // level 1 because image is the 'root'
     println "Found ${parentless.size()} parentless objects"
+    removeObjects (parentless, false) // true to keep children objects
     return parentless
 }
 
@@ -83,12 +139,19 @@ def axon_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathCl
 def inner_tongue_objects = getDetectionObjects().findAll {it.getPathClass() == getPathClass("Inner Tongue")}
 
 println "Comparing ${fibre_objects.size()} fibre objects vs ${inner_tongue_objects.size()} inner tongue objects"
+removeObjects(inner_tongue_objects, true)
 establishHierarchyBasedOnIoO2 (fibre_objects, inner_tongue_objects)
 
 println "Comparing ${inner_tongue_objects.size()} inner tongue objects vs ${axon_objects.size()} axon objects"
+inner_tongue_objects = getDetectionObjects().findAll {it.getPathClass() == getPathClass("Inner Tongue")} // updated collection
+removeObjects(axon_objects, true)
 establishHierarchyBasedOnIoO2 (inner_tongue_objects, axon_objects)
 
-// Remove parentless pbjects
-def combined_objects = axon_objects + inner_tongue_objects
-parentless = findParentless (combined_objects)
-removeObjects (parentless, false) // true to keep children objects
+// Remove objects with an invalid hierarchy
+Collection<PathObject> combined_objects = axon_objects + inner_tongue_objects
+Collection<PathObject> invalidParentlessObjects = removeParentless (combined_objects) // Storing invalid objects, could be useful for semi-automated annotation
+
+ // Remove objects invalid for quantification
+Collection<PathObject> invalidFibreObjects = removeChildless() // Storing invalid objects, could be useful for semi-automated annotation
+
+return   
