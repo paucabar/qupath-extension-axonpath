@@ -67,37 +67,42 @@ def establishHierarchyBasedOnIoO2(objectsPrimary, objectsSecondary) {
 
 /**
  * This function processes Fibre objects in QuPath by verifying and filtering their hierarchical relationships.
- * It identifies child objects up to two levels deep, ensuring that first-level children belong to the "Inner Tongue"
- * class and second-level children belong to the "Axon" class. Fibre objects that lack at least one "Inner Tongue"
- * child and one "Axon" descendant are removed from the hierarchy, along with their associated child objects.
+ * Depending on the data type ("EM" or "BF"), it enforces specific hierarchical relationships:
  * 
- * The function retains only valid Fibre objects with meaningful relationships and removes invalid ones,
- * ensuring accurate and biologically relevant data organisation.
+ * - For "EM": Fibre > Inner Tongue > Axon (at least one Inner Tongue and one Axon descendant required).
+ * - For "BF": Fibre > Axon (at least one Axon required; Inner Tongue is ignored).
+ * 
+ * Invalid Fibre objects (those not meeting the hierarchy criteria) are removed from the hierarchy,
+ * along with their associated child objects.
+ * 
+ * @param dataType A string ("EM" or "BF") specifying the type of data and hierarchy logic to apply.
+ * @return A collection of invalid Fibre objects that were removed.
  */
- 
-Collection<PathObject> removeChildless() {
+Collection<PathObject> removeChildless(String dataType) {
     // Get all Fibre objects
     def fibre_objects = getDetectionObjects().findAll { it.getPathClass() == getPathClass("Fibre") }
     
-    // Create a map to store Fibre objects and their child objects
+    // Create a map to store Fibre objects and their valid child objects
     def validFibreToChildrenMap = [:]
     
     // Iterate through each Fibre object
     fibre_objects.each { fibre ->
-        // Get the first level of child objects (filter by "Inner Tongue" class)
-        def firstLevelChildren = fibre.getChildObjects().findAll { it.getPathClass() == getPathClass("Inner Tongue") }
-    
-        // Get the second level of child objects from first-level children (filter by "Axon" class)
-        def secondLevelChildren = firstLevelChildren.collectMany { it.getChildObjects() }
-                                                     .findAll { it.getPathClass() == getPathClass("Axon") }
-    
-        // Check if the Fibre object has at least one "Inner Tongue" child and one "Axon" child
-        if (firstLevelChildren && secondLevelChildren) {
-            // Combine the valid first and second-level children into a single list
-            def allValidChildren = firstLevelChildren + secondLevelChildren
-    
-            // Store the Fibre object and its valid children in the map
-            validFibreToChildrenMap[fibre] = allValidChildren
+        if (dataType == "EM") {
+            // For EM: Fibre > Inner Tongue > Axon hierarchy
+            def firstLevelChildren = fibre.getChildObjects().findAll { it.getPathClass() == getPathClass("Inner Tongue") }
+            def secondLevelChildren = firstLevelChildren.collectMany { it.getChildObjects() }
+                                                         .findAll { it.getPathClass() == getPathClass("Axon") }
+            // Check if the Fibre object has at least one Inner Tongue and one Axon
+            if (firstLevelChildren && secondLevelChildren) {
+                validFibreToChildrenMap[fibre] = firstLevelChildren + secondLevelChildren
+            }
+        } else if (dataType == "BF") {
+            // For BF: Fibre > Axon hierarchy
+            def firstLevelChildren = fibre.getChildObjects().findAll { it.getPathClass() == getPathClass("Axon") }
+            // Check if the Fibre object has at least one Axon
+            if (firstLevelChildren) {
+                validFibreToChildrenMap[fibre] = firstLevelChildren
+            }
         }
     }
     
@@ -110,10 +115,11 @@ Collection<PathObject> removeChildless() {
     // Remove invalid Fibre objects and their children
     def invalidFibreObjects = fibre_objects - validFibreToChildrenMap.keySet()
     println "Removing ${invalidFibreObjects.size()} invalid Fibre objects..."
-    removeObjects(invalidFibreObjects, false) // true to remove chilfren
+    removeObjects(invalidFibreObjects, false) // true to remove children
     
     return invalidFibreObjects
 }
+
 
 // Method to identify all the objects with no parent object
 
@@ -133,18 +139,18 @@ Collection<PathObject> removeParentless (objects) {
  */
 
 // Set microscopy data
-def micData = "EM" // "EM or BF"
+def dataType = "EM" // "EM or BF"
 
 // Establish hierarchy
 Collection<PathObject> fibre_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Fibre")) }
 Collection<PathObject> axon_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Axon")) }
 Collection<PathObject> inner_tongue_objects
-if (micData == "EM") {
+if (dataType == "EM") {
     inner_tongue_objects = getDetectionObjects().findAll {it.getPathClass() == getPathClass("Inner Tongue")}
     println inner_tongue_objects
 }
 
-if (micData == "EM") {
+if (dataType == "EM") {
     println "Comparing ${fibre_objects.size()} fibre objects vs ${inner_tongue_objects.size()} inner tongue objects"
     removeObjects(inner_tongue_objects, true)
     establishHierarchyBasedOnIoO2 (fibre_objects, inner_tongue_objects)
@@ -154,7 +160,7 @@ if (micData == "EM") {
     removeObjects(axon_objects, true)
     establishHierarchyBasedOnIoO2 (inner_tongue_objects, axon_objects)
     axon_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Axon")) } // update collection
-} else if (micData == "BF") {
+} else if (dataType == "BF") {
     println "Comparing ${fibre_objects.size()} fibre objects vs ${axon_objects.size()} axon objects"
     removeObjects(axon_objects, true)
     establishHierarchyBasedOnIoO2 (fibre_objects, axon_objects)
@@ -162,15 +168,15 @@ if (micData == "EM") {
 }
 
 // Remove objects with an invalid hierarchy
-if (micData == "EM") {
+if (dataType == "EM") {
     Collection<PathObject> combined_objects = axon_objects + inner_tongue_objects
     Collection<PathObject> invalidParentlessObjects = removeParentless (combined_objects) // Storing invalid objects, could be useful for semi-automated annotation
-} else if (micData == "BF") {
+} else if (dataType == "BF") {
     Collection<PathObject> invalidParentlessObjects = removeParentless (axon_objects) // Storing invalid objects, could be useful for semi-automated annotation
 }
 
 
  // Remove objects invalid for quantification
-Collection<PathObject> invalidFibreObjects = removeChildless() // Storing invalid objects, could be useful for semi-automated annotation
+Collection<PathObject> invalidFibreObjects = removeChildless(dataType) // Storing invalid objects, could be useful for semi-automated annotation
 
 return   

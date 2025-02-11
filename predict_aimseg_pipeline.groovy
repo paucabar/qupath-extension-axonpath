@@ -248,6 +248,7 @@ void processSemantic(ImagePlus imp, String className, int channel, int label, do
 // Model file
 def modelPath = "D:/pcarrillo/Git_Repos/AimSeg-Monai_3Targets/weights/weights_tem.pt" // the path to your model here
 def uri = Paths.get(modelPath).toUri()
+def dataType = "EM" // "EM or BF"
 
 // Image data
 def imageData = getCurrentImageData()
@@ -293,6 +294,8 @@ impOutput = modelInference (uri, layout, inputWidth, inputHeight, padding, input
 // Instance segmentation on model prediction
 processSDT(impOutput, "Fibre", 2, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY)
 processSDT(impOutput, "Axon", 3, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY)
-processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, imageData, request, translateX, translateY)
+if (dataType == "EM") {
+    processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, imageData, request, translateX, translateY)
+}
 
 return

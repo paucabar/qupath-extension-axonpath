@@ -36,7 +36,7 @@ import java.lang.Math
  * in square microns, ensuring accurate and meaningful results.
  */
 
-void computeFeatures(imageData) {
+void computeFeatures(ImageData imageData, String dataType) {
     // Get calibration
     def pixelHeightMicrons = imageData.getServer().getPixelCalibration().getPixelHeightMicrons()
     def pixelWidthMicrons = imageData.getServer().getPixelCalibration().getPixelWidthMicrons()
@@ -56,22 +56,31 @@ void computeFeatures(imageData) {
     
         // define metrics
         float axon_area = 0
-        float inner_region_area = 0
         float fibre_area = 0
         float axon_gratio = 0
-        float myelin_gratio = 0
         int axon_objects = 0
         float fibre_circularity = 0
         float fibre_solidity = 0
+        float inner_region_area = 0
+        float myelin_gratio = 0
     
-        childDetections = parent.getChildObjects()
-        childDetections.each { child ->
-            inner_region_area += child.getROI().getArea() * pixelSizeSquaredMicrons
-            grandchildDetections = child.getChildObjects()
-            axon_objects = grandchildDetections.size()
-            
-            grandchildDetections.each { grandchild ->
-                axon_area += grandchild.getROI().getArea() * pixelSizeSquaredMicrons
+        // get object areas
+        if (dataType == "EM") {
+            childDetections = parent.getChildObjects()
+            childDetections.each { child ->
+                inner_region_area += child.getROI().getArea() * pixelSizeSquaredMicrons
+                grandchildDetections = child.getChildObjects()
+                axon_objects = grandchildDetections.size()
+                
+                grandchildDetections.each { grandchild ->
+                    axon_area += grandchild.getROI().getArea() * pixelSizeSquaredMicrons
+                }
+            }
+        } else if (dataType == "BF") {
+            childDetections = parent.getChildObjects()
+            childDetections.each { child ->
+                axon_area += child.getROI().getArea() * pixelSizeSquaredMicrons
+                axon_objects = childDetections.size()
             }
         }
                 
@@ -82,20 +91,25 @@ void computeFeatures(imageData) {
         
         // g-ratio netrics
         float fibre_diameter = 2 * Math.sqrt(fibre_area / Math.PI)
-        float inreg_diameter = 2 * Math.sqrt(inner_region_area / Math.PI)
         float axon_diameter = 2 * Math.sqrt(axon_area / Math.PI)
-        myelin_gratio = inreg_diameter / fibre_diameter
+        
         axon_gratio = axon_diameter / fibre_diameter
+        if (dataType == "EM") {
+            float inreg_diameter = 2 * Math.sqrt(inner_region_area / Math.PI)
+            myelin_gratio = inreg_diameter / fibre_diameter
+        }
         
         // add measurements
         parent.getMeasurementList().putMeasurement("Axon Area", axon_area)
-        parent.getMeasurementList().putMeasurement("Inner Region Area", inner_region_area)
         parent.getMeasurementList().putMeasurement("Fibre Area", fibre_area)
         parent.getMeasurementList().putMeasurement("Axon g-ratio", axon_gratio)
-        parent.getMeasurementList().putMeasurement("Myelin g-ratio", myelin_gratio)
         parent.getMeasurementList().putMeasurement("Axon Objects", axon_objects)
         parent.getMeasurementList().putMeasurement("Fibre Circularity", fibre_circularity)
         parent.getMeasurementList().putMeasurement("Fibre Solidity", fibre_solidity)
+        if (dataType == "EM") {
+            parent.getMeasurementList().putMeasurement("Inner Region Area", inner_region_area)
+            parent.getMeasurementList().putMeasurement("Myelin g-ratio", myelin_gratio)
+        }
         
         return
     }
@@ -109,9 +123,10 @@ void computeFeatures(imageData) {
  */
  
  // get image data
- def imageData = getCurrentImageData()
+ String dataType = "EM" // EM or BF
+ ImageData imageData = getCurrentImageData()
 
 // Feature extraction
-computeFeatures(imageData)
+computeFeatures(imageData, dataType)
 
 return
