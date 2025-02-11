@@ -139,7 +139,7 @@ ImagePlus analyzeParticles (ImagePlus imp, int options, int measurements, double
  * Method to get an SDT channel from an image plus and return an instance segmentation in the
  * form of QuPath objects.
  */
-void processSDT(ImagePlus imp, String className, int channel, double min_threshold, double max_threshold, double downsample, imageData, request, double translateX = 0, double translateY = 0) {
+void processSDT(ImagePlus imp, String dataType, String className, int channel, double min_threshold, double max_threshold, double downsample, imageData, request, double translateX = 0, double translateY = 0) {
     // Create ROIs from thresholds
     imp.setC(channel) // Set the channel index (1-based)
     ImageProcessor ip = imp.getProcessor() // Get the ImageProcessor of the specified channel
@@ -154,7 +154,12 @@ void processSDT(ImagePlus imp, String className, int channel, double min_thresho
     addObjects(pathObjects)
     
     // Create an ImageServer for seed instances
-    def minSizePixels = 700
+    int minSizePixels
+    if (dataType == "EM") {
+        minSizePixels = 700
+    } else if (dataType == "BF") {
+        minSizePixels = 25
+    }
     
     def seedServer = new LabeledImageServer.Builder(imageData)
             .backgroundLabel(0, ColorTools.BLACK) // Specify background label (usually 0 or 255)
@@ -247,6 +252,7 @@ void processSemantic(ImagePlus imp, String className, int channel, int label, do
 
 // Model file
 def modelPath = "D:/pcarrillo/Git_Repos/AimSeg-Monai_3Targets/weights/weights_tem.pt" // the path to your model here
+// temporary path, use weights_tem.pt or weights_brightfield.pt model
 def uri = Paths.get(modelPath).toUri()
 def dataType = "EM" // "EM or BF"
 
@@ -262,7 +268,12 @@ def layout = "NCHW"
 def inputShape = [1, nChannels, inputHeight, inputWidth]
 
 // Image parameters
-double targetPixelSizeMicrons = 0.008 // optimised pixel size for electron microscopy, 0.07 microns for brightfield images
+double targetPixelSizeMicrons
+if (dataType == "EM") {
+    targetPixelSizeMicrons = 0.008 // optimised pixel size for electron microscopy
+} else if (dataType == "BF") {
+    targetPixelSizeMicrons = 0.07 // optimised pixel size for brightfield
+}
 double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, true)
 
 // Post-processing parameters
@@ -292,8 +303,8 @@ if (selectedObject != null && selectedObject.isAnnotation()) {
 impOutput = modelInference (uri, layout, inputWidth, inputHeight, padding, inputShape, imageData, server, request)
 
 // Instance segmentation on model prediction
-processSDT(impOutput, "Fibre", 2, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY)
-processSDT(impOutput, "Axon", 3, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY)
+processSDT(impOutput, dataType, "Fibre", 2, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY)
+processSDT(impOutput, dataType, "Axon", 3, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY)
 if (dataType == "EM") {
     processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, imageData, request, translateX, translateY)
 }

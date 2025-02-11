@@ -70,7 +70,7 @@ void computeFeatures(ImageData imageData, String dataType) {
             childDetections.each { child ->
                 inner_region_area += child.getROI().getArea() * pixelSizeSquaredMicrons
                 grandchildDetections = child.getChildObjects()
-                axon_objects = grandchildDetections.size()
+                axon_objects += grandchildDetections.size()
                 
                 grandchildDetections.each { grandchild ->
                     axon_area += grandchild.getROI().getArea() * pixelSizeSquaredMicrons
