@@ -309,4 +309,9 @@ if (dataType == "EM") {
     processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, imageData, request, translateX, translateY)
 }
 
+// lock selected annotation
+if (selectedObject != null && !selectedObject.isLocked()) {
+    selectedObject.setLocked(true)
+}
+
 return
