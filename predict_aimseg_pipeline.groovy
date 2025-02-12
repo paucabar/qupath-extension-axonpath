@@ -43,6 +43,8 @@ import ij.measure.ResultsTable
 import ij.plugin.frame.RoiManager
 import ij.measure.Measurements
 
+import java.lang.Math
+
 import static qupath.lib.gui.scripting.QPEx.*
 import qupath.ext.djl.DjlTools
 
@@ -139,7 +141,7 @@ ImagePlus analyzeParticles (ImagePlus imp, int options, int measurements, double
  * Method to get an SDT channel from an image plus and return an instance segmentation in the
  * form of QuPath objects.
  */
-void processSDT(ImagePlus imp, String dataType, String className, int channel, double min_threshold, double max_threshold, double downsample, imageData, request, double translateX = 0, double translateY = 0) {
+void processSDT(ImagePlus imp, String dataType, double targetPixelSizeMicrons, double minDiameterMicrons, String className, int channel, double min_threshold, double max_threshold, double downsample, imageData, request, double translateX = 0, double translateY = 0) {
     // Create ROIs from thresholds
     imp.setC(channel) // Set the channel index (1-based)
     ImageProcessor ip = imp.getProcessor() // Get the ImageProcessor of the specified channel
@@ -154,11 +156,13 @@ void processSDT(ImagePlus imp, String dataType, String className, int channel, d
     addObjects(pathObjects)
     
     // Create an ImageServer for seed instances
-    int minSizePixels
+    double minAreaMicrons = Math.PI * Math.pow(minDiameterMicrons / 2, 2)
+    double minAreaPixels = minAreaMicrons / Math.pow(targetPixelSizeMicrons, 2) * downsample
+    double minSizePixels
     if (dataType == "EM") {
-        minSizePixels = 700
+        minSizePixels = minAreaPixels * 0.4
     } else if (dataType == "BF") {
-        minSizePixels = 25
+        minSizePixels = minAreaPixels * 0.2
     }
     
     def seedServer = new LabeledImageServer.Builder(imageData)
@@ -269,10 +273,13 @@ def inputShape = [1, nChannels, inputHeight, inputWidth]
 
 // Image parameters
 double targetPixelSizeMicrons
+double minDiameterMicrons
 if (dataType == "EM") {
     targetPixelSizeMicrons = 0.008 // optimised pixel size for electron microscopy
+    minDiameterMicrons = 0.2
 } else if (dataType == "BF") {
     targetPixelSizeMicrons = 0.07 // optimised pixel size for brightfield
+    minDiameterMicrons = 1.0
 }
 double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, true)
 
@@ -303,8 +310,8 @@ if (selectedObject != null && selectedObject.isAnnotation()) {
 impOutput = modelInference (uri, layout, inputWidth, inputHeight, padding, inputShape, imageData, server, request)
 
 // Instance segmentation on model prediction
-processSDT(impOutput, dataType, "Fibre", 2, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY)
-processSDT(impOutput, dataType, "Axon", 3, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY)
+processSDT(impOutput, dataType, targetPixelSizeMicrons, minDiameterMicrons, "Fibre", 2, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY)
+processSDT(impOutput, dataType, targetPixelSizeMicrons, minDiameterMicrons, "Axon", 3, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY)
 if (dataType == "EM") {
     processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, imageData, request, translateX, translateY)
 }
