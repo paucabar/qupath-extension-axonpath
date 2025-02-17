@@ -5,12 +5,14 @@ import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.Property;
 import javafx.scene.Scene;
 import javafx.scene.control.MenuItem;
+import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.aimseg.ui.AimSegController;
 import qupath.fx.dialogs.Dialogs;
 import qupath.fx.prefs.controlsfx.PropertyItemBuilder;
+import qupath.fx.utils.FXUtils;
 import qupath.lib.common.Version;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.extensions.GitHubProject;
@@ -106,7 +108,6 @@ public class AimSegExtension implements QuPathExtension, GitHubProject {
 
 	@Override
 	public void installExtension(QuPathGUI qupath) {
-		System.out.println("Installing AIMSEG");
 		if (isInstalled) {
 			logger.debug("{} is already installed", getName());
 			return;
@@ -114,6 +115,14 @@ public class AimSegExtension implements QuPathExtension, GitHubProject {
 		isInstalled = true;
 		addPreferenceToPane(qupath);
 		addMenuItem(qupath);
+	}
+
+	private void handleStageHeightChange() {
+		stage.sizeToScene();
+		// This fixes a bug where the stage would migrate to the corner of a screen if it is
+		// resized, hidden, then shown again
+		if (stage.isShowing() && Double.isFinite(stage.getX()) && Double.isFinite(stage.getY()))
+			FXUtils.retainWindowPosition(stage);
 	}
 
 	/**
@@ -154,7 +163,9 @@ public class AimSegExtension implements QuPathExtension, GitHubProject {
 		if (stage == null) {
 			try {
 				stage = new Stage();
-				Scene scene = new Scene(AimSegController.createInstance());
+				var pane = AimSegController.createInstance();
+				Scene scene = new Scene(new BorderPane(pane));
+				pane.heightProperty().addListener((v, o, n) -> handleStageHeightChange());
 				stage.initOwner(QuPathGUI.getInstance().getStage());
 				stage.setTitle("AimSeg extension");
 				stage.setScene(scene);
