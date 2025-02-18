@@ -13,7 +13,10 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import qupath.ext.djl.DjlTools;
 import qupath.imagej.processing.RoiLabeling;
 import qupath.imagej.processing.SimpleThresholding;
@@ -24,6 +27,7 @@ import qupath.lib.images.ImageData;
 import qupath.lib.images.servers.ImageServer;
 import qupath.lib.images.servers.LabeledImageServer;
 import qupath.lib.images.servers.PixelType;
+import qupath.lib.objects.PathObject;
 import qupath.lib.objects.PathObjects;
 import qupath.lib.objects.classes.PathClass;
 import qupath.lib.regions.ImagePlane;
@@ -40,12 +44,12 @@ import java.awt.image.BufferedImage;
  * This script demonstrates how to run an AimSeg model in QuPath,
  * including the basic functions for model inference and post-processing in QuPath.
  * The output is stored as three distinct classes of segmented objects: axon, inner tongue, and fibre.
- *
+ * <p>
  *
  * Prior to running this script, ensure that the DJL extension is installed in QuPath
- * and PyTorch has been downloaded – see https://qupath.readthedocs.io/en/stable/docs/deep/djl.html
+ * and PyTorch has been downloaded – see <a href="https://qupath.readthedocs.io/en/stable/docs/deep/djl.html">the QuPath docs</a>.
  */
-class PredictionTools {
+public class PredictionTools {
     /**
      * Function to calculate the downsample factor based on target pixel size
      */
@@ -83,7 +87,7 @@ class PredictionTools {
         double difference = max - min;
         ImagePlus impOutput;
         // Apply prediction
-        try (var dnn = DjlTools.createDnnModel(uri, layout, inputShape)){
+        try (var dnn = DjlTools.createDnnModel(uri, layout, inputShape)) {
             var op = ImageOps.buildImageDataOp()
                     .appendOps(
                             ImageOps.Core.ensureType(PixelType.FLOAT32),
@@ -133,9 +137,9 @@ class PredictionTools {
      * Method to get an SDT channel from an image plus and return an instance segmentation in the
      * form of QuPath objects.
      */
-    static void processSDT(ImagePlus imp, String dataType, double targetPixelSizeMicrons, double minDiameterMicrons,
-                           String className, int channel, double min_threshold, double max_threshold, double downsample,
-                           ImageData<BufferedImage> imageData, RegionRequest request, double translateX, double translateY) throws IOException {
+    static Collection<PathObject> processSDT(ImagePlus imp, String dataType, double targetPixelSizeMicrons, double minDiameterMicrons,
+                                             String className, int channel, double min_threshold, double max_threshold, double downsample,
+                                             ImageData<BufferedImage> imageData, RegionRequest request, double translateX, double translateY) throws IOException {
         // Create ROIs from thresholds
         imp.setC(channel); // Set the channel index (1-based)
         ImageProcessor ip = imp.getProcessor(); // Get the ImageProcessor of the specified channel
@@ -204,21 +208,20 @@ class PredictionTools {
         Calibration cal = imp.getCalibration();
 
         // Convert ImageJ ROIs to QuPath detections
-        var pathDetectedObjects = roiDetected.stream().map(
+        return roiDetected.stream().map(
                 roiIJ -> {
                     var roi = IJTools.convertToROI(roiIJ, cal, downsample, plane);
                     return PathObjects.createDetectionObject(roi.translate(translateX, translateY), PathClass.getInstance(className));
                 })
                 .collect(Collectors.toSet());
-        QP.addObjects(pathDetectedObjects);
     }
 
     /**
      * Method to get a semantic channel from an image plus and return an instance segmentation in the
      * form of QuPath objects.
      */
-    static void processSemantic(ImagePlus imp, String className, int channel, int label, double downsample,
-                                ImageData<BufferedImage> imageData, RegionRequest request, double translateX, double translateY) {
+    static Collection<PathObject> processSemantic(ImagePlus imp, String className, int channel, int label, double downsample,
+                                                  ImageData<BufferedImage> imageData, RegionRequest request, double translateX, double translateY) {
         // Create ROIs from thresholds
         imp.setC(channel); // Set the channel index (1-based)
         ImageProcessor ip = imp.getProcessor(); // Get the ImageProcessor of the specified channel
@@ -238,20 +241,19 @@ class PredictionTools {
         ImagePlane plane = ImagePlane.getDefaultPlane();
         Calibration cal = imp.getCalibration();
 
-        var pathDetectedObjects = Arrays.stream(roiList)
+        return Arrays.stream(roiList)
                 .map(roi -> {
                     var roiIJ = IJTools.convertToROI(roi, cal, downsample, plane);
                     return PathObjects.createDetectionObject(roiIJ.translate(translateX, translateY), PathClass.getInstance(className));
                 })
                 .collect(Collectors.toSet());
-        QP.addObjects(pathDetectedObjects);
     }
 
 
     /**
      * Segmentation pipeline
      */
-    static void runAimSegGroovy(Path modelPath) throws IOException {
+    public static Collection<PathObject> runAimSeg(Path modelPath) throws IOException {
         //Some parameters
 
         // temporary path, use weights_tem.pt or weights_brightfield.pt model
@@ -301,16 +303,21 @@ class PredictionTools {
         impOutput = modelInference(uri, layout, inputWidth, inputHeight, padding, inputShape, imageData, server, request);
 
         // Instance segmentation on model prediction
-        processSDT(impOutput, dataType, targetPixelSizeMicrons, minDiameterMicrons, "Fibre", 2, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY);
-        processSDT(impOutput, dataType, targetPixelSizeMicrons, minDiameterMicrons, "Axon", 3, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY);
-        if (dataType == "EM") {
-            processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, imageData, request, translateX, translateY);
+        var fibres = processSDT(impOutput, dataType, targetPixelSizeMicrons, minDiameterMicrons, "Fibre", 2, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY);
+        QP.addObjects(fibres);
+        var axons = processSDT(impOutput, dataType, targetPixelSizeMicrons, minDiameterMicrons, "Axon", 3, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY);
+        QP.addObjects(axons);
+        Collection<PathObject> tongues = List.of();
+        if (dataType.equals("EM")) {
+            tongues = processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, imageData, request, translateX, translateY);
+            QP.addObjects(tongues);
         }
 
         // lock selected annotation
         if (selectedObject != null && !selectedObject.isLocked()) {
             selectedObject.setLocked(true);
         }
+        return Stream.of(fibres.stream(), axons.stream(), tongues.stream()).flatMap(s -> s).collect(Collectors.toSet());
     }
 
 

@@ -1,12 +1,13 @@
 package qupath.ext.aimseg.ui;
 
+import java.nio.file.Path;
 import java.util.List;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.VBox;
 import org.controlsfx.control.SearchableComboBox;
+import qupath.ext.aimseg.core.PredictionTools;
 import qupath.fx.dialogs.Dialogs;
 
 import java.io.IOException;
@@ -52,8 +53,9 @@ public class AimSegController extends BorderPane {
     }
 
     @FXML
-    private void runAimSeg() {
-        runAimSegGroovy();
+    private void runAimSeg() throws IOException {
+        var pathObjects = PredictionTools.runAimSeg(Path.of("/path/to/weights.pt"));
+        System.out.println(pathObjects.size() + " objects created by AimSeg");
         Dialogs.showInfoNotification(
                 "AimSeg extension",
                 """

@@ -145,6 +145,7 @@ class HierarchyTools {
         System.out.println("Removing ${invalidFibreObjects.size()} invalid Fibre objects...");
         QP.removeObjects(invalidFibreObjects); // true to remove children
 
+
         return invalidFibreObjects;
     }
 
