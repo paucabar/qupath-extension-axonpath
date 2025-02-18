@@ -13,40 +13,35 @@
  * Some imports
  */
  
+
+import ij.IJ
 import ij.ImagePlus
-import ij.process.ImageStatistics
-import qupath.lib.images.servers.PixelType
-import qupath.lib.regions.Padding
-import qupath.lib.regions.RegionRequest
-import qupath.opencv.ops.ImageOps
-import qupath.opencv.tools.OpenCVTools
-
-import ij.process.ImageProcessor
-import qupath.imagej.processing.SimpleThresholding
-import qupath.lib.roi.RoiTools
-import qupath.imagej.processing.RoiLabeling
 import ij.measure.Calibration
-import qupath.lib.regions.ImagePlane
-
+import ij.measure.Measurements
+import ij.measure.ResultsTable
+import ij.plugin.filter.ParticleAnalyzer
+import ij.plugin.frame.RoiManager
+import ij.process.ImageProcessor
+import ij.process.ImageStatistics
+import qupath.ext.djl.DjlTools
+import qupath.imagej.processing.RoiLabeling
+import qupath.imagej.processing.SimpleThresholding
 import qupath.imagej.processing.Watershed
 import qupath.imagej.tools.IJTools
 import qupath.lib.common.ColorTools
-import qupath.lib.common.GeneralTools
 import qupath.lib.images.servers.LabeledImageServer
+import qupath.lib.images.servers.PixelType
 import qupath.lib.objects.PathObjects
+import qupath.lib.regions.ImagePlane
+import qupath.lib.regions.Padding
+import qupath.lib.regions.RegionRequest
+import qupath.lib.roi.RoiTools
+import qupath.opencv.ops.ImageOps
+import qupath.opencv.tools.OpenCVTools
 
 import java.nio.file.Paths
 
-import ij.IJ
-import ij.plugin.filter.ParticleAnalyzer
-import ij.measure.ResultsTable
-import ij.plugin.frame.RoiManager
-import ij.measure.Measurements
-
-import java.lang.Math
-
-import static qupath.lib.gui.scripting.QPEx.*
-import qupath.ext.djl.DjlTools
+import static qupath.lib.scripting.QP.*
 
 
 /**
@@ -56,7 +51,7 @@ import qupath.ext.djl.DjlTools
 /**
  * Function to calculate the downsample factor based on target pixel size
  */
-double calculateDownsampleFactor(imageData, double targetPixelSizeMicrons, boolean allowUpscaling = false) {
+static double calculateDownsampleFactor(imageData, double targetPixelSizeMicrons, boolean allowUpscaling = false) {
     // Get the current pixel size from image metadata
     def pixelSizeMicrons = imageData.getServer().getPixelCalibration().getAveragedPixelSizeMicrons() // maybe getPixelHeight() and getPixelWidth()
     
@@ -123,7 +118,7 @@ ImagePlus modelInference (uri, layout, inputWidth, inputHeight, padding, inputSh
  * options is defined as an integer using Interface Measurements fields
  * results table is not given as an argument because the method is never used to measure
  */
-ImagePlus analyzeParticles (ImagePlus imp, int options, int measurements, double minSize, double maxSize, double minCirc, double maxCirc) {
+static ImagePlus analyzeParticles (ImagePlus imp, int options, int measurements, double minSize, double maxSize, double minCirc, double maxCirc) {
     def rt = new ResultsTable()
     def pa = new ParticleAnalyzer(options, measurements, rt, minSize, maxSize, minCirc, maxCirc)
     ImageProcessor ip = imp.getProcessor()
@@ -320,5 +315,3 @@ if (dataType == "EM") {
 if (selectedObject != null && !selectedObject.isLocked()) {
     selectedObject.setLocked(true)
 }
-
-return

@@ -12,11 +12,10 @@
  * Some imports
  */
 
-import static qupath.lib.gui.scripting.QPEx.*
 
-import qupath.lib.objects.PathObject
 import qupath.lib.roi.RoiTools
-import java.lang.Math
+
+import static qupath.lib.scripting.QP.*
 
 /**
  * Define some methods
@@ -55,14 +54,14 @@ void computeFeatures(ImageData imageData, String dataType) {
     parentDetections.each { parent ->
     
         // define metrics
-        float axon_area = 0
-        float fibre_area = 0
-        float axon_gratio = 0
+        double axon_area = 0
+        double fibre_area = 0
+        double axon_gratio = 0
         int axon_objects = 0
-        float fibre_circularity = 0
-        float fibre_solidity = 0
-        float inner_region_area = 0
-        float myelin_gratio = 0
+        double fibre_circularity = 0
+        double fibre_solidity = 0
+        double inner_region_area = 0
+        double myelin_gratio = 0
     
         // get object areas
         if (dataType == "EM") {
@@ -90,12 +89,12 @@ void computeFeatures(ImageData imageData, String dataType) {
         fibre_solidity = parent.getROI().getSolidity()
         
         // g-ratio netrics
-        float fibre_diameter = 2 * Math.sqrt(fibre_area / Math.PI)
-        float axon_diameter = 2 * Math.sqrt(axon_area / Math.PI)
+        double fibre_diameter = 2 * Math.sqrt(fibre_area / Math.PI)
+        double axon_diameter = 2 * Math.sqrt(axon_area / Math.PI)
         
         axon_gratio = axon_diameter / fibre_diameter
         if (dataType == "EM") {
-            float inreg_diameter = 2 * Math.sqrt(inner_region_area / Math.PI)
+            double inreg_diameter = 2 * Math.sqrt(inner_region_area / Math.PI)
             myelin_gratio = inreg_diameter / fibre_diameter
         }
         
@@ -110,8 +109,7 @@ void computeFeatures(ImageData imageData, String dataType) {
             parent.getMeasurementList().putMeasurement("Inner Region Area", inner_region_area)
             parent.getMeasurementList().putMeasurement("Myelin g-ratio", myelin_gratio)
         }
-        
-        return
+
     }
 }
 
@@ -122,11 +120,9 @@ void computeFeatures(ImageData imageData, String dataType) {
  * Quantification pipeline
  */
  
- // get image data
- String dataType = "EM" // EM or BF
- ImageData imageData = getCurrentImageData()
+// get image data
+String dataType = "EM" // EM or BF
+ImageData imageData = getCurrentImageData()
 
 // Feature extraction
 computeFeatures(imageData, dataType)
-
-return
