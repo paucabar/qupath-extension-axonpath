@@ -138,44 +138,45 @@ Collection<PathObject> removeParentless (objects) {
 /**
  * Pipeline to update hierarchy
  */
+static void updateHierarchy() {
+    // Set microscopy data
+    def dataType = "EM" // "EM or BF"
 
-// Set microscopy data
-def dataType = "EM" // "EM or BF"
+    // Establish hierarchy
+    Collection<PathObject> fibre_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Fibre")) }
+    Collection<PathObject> axon_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Axon")) }
+    Collection<PathObject> inner_tongue_objects
+    if (dataType == "EM") {
+        inner_tongue_objects = getDetectionObjects().findAll {it.getPathClass() == getPathClass("Inner Tongue")}
+        println inner_tongue_objects
+    }
 
-// Establish hierarchy
-Collection<PathObject> fibre_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Fibre")) }
-Collection<PathObject> axon_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Axon")) }
-Collection<PathObject> inner_tongue_objects
-if (dataType == "EM") {
-    inner_tongue_objects = getDetectionObjects().findAll {it.getPathClass() == getPathClass("Inner Tongue")}
-    println inner_tongue_objects
-}
+    if (dataType == "EM") {
+        println "Comparing ${fibre_objects.size()} fibre objects vs ${inner_tongue_objects.size()} inner tongue objects"
+        removeObjects(inner_tongue_objects)
+        establishHierarchyBasedOnIoO2 (fibre_objects, inner_tongue_objects)
+        inner_tongue_objects = getDetectionObjects().findAll {it.getPathClass() == getPathClass("Inner Tongue")} // updated collection
 
-if (dataType == "EM") {
-    println "Comparing ${fibre_objects.size()} fibre objects vs ${inner_tongue_objects.size()} inner tongue objects"
-    removeObjects(inner_tongue_objects)
-    establishHierarchyBasedOnIoO2 (fibre_objects, inner_tongue_objects)
-    inner_tongue_objects = getDetectionObjects().findAll {it.getPathClass() == getPathClass("Inner Tongue")} // updated collection
-    
-    println "Comparing ${inner_tongue_objects.size()} inner tongue objects vs ${axon_objects.size()} axon objects"
-    removeObjects(axon_objects)
-    establishHierarchyBasedOnIoO2 (inner_tongue_objects, axon_objects)
-    axon_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Axon")) } // update collection
-} else if (dataType == "BF") {
-    println "Comparing ${fibre_objects.size()} fibre objects vs ${axon_objects.size()} axon objects"
-    removeObjects(axon_objects)
-    establishHierarchyBasedOnIoO2 (fibre_objects, axon_objects)
-    axon_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Axon")) } // update collection
-}
+        println "Comparing ${inner_tongue_objects.size()} inner tongue objects vs ${axon_objects.size()} axon objects"
+        removeObjects(axon_objects)
+        establishHierarchyBasedOnIoO2 (inner_tongue_objects, axon_objects)
+        axon_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Axon")) } // update collection
+    } else if (dataType == "BF") {
+        println "Comparing ${fibre_objects.size()} fibre objects vs ${axon_objects.size()} axon objects"
+        removeObjects(axon_objects)
+        establishHierarchyBasedOnIoO2 (fibre_objects, axon_objects)
+        axon_objects = getDetectionObjects().findAll{(it.getPathClass() == getPathClass("Axon")) } // update collection
+    }
 
 // Remove objects with an invalid hierarchy
-if (dataType == "EM") {
-    Collection<PathObject> combined_objects = axon_objects + inner_tongue_objects
-    Collection<PathObject> invalidParentlessObjects = removeParentless (combined_objects) // Storing invalid objects, could be useful for semi-automated annotation
-} else if (dataType == "BF") {
-    Collection<PathObject> invalidParentlessObjects = removeParentless (axon_objects) // Storing invalid objects, could be useful for semi-automated annotation
+    if (dataType == "EM") {
+        Collection<PathObject> combined_objects = axon_objects + inner_tongue_objects
+        Collection<PathObject> invalidParentlessObjects = removeParentless (combined_objects) // Storing invalid objects, could be useful for semi-automated annotation
+    } else if (dataType == "BF") {
+        Collection<PathObject> invalidParentlessObjects = removeParentless (axon_objects) // Storing invalid objects, could be useful for semi-automated annotation
+    }
+
+    // Remove objects invalid for quantification
+    Collection<PathObject> invalidFibreObjects = removeChildless(dataType) // Storing invalid objects, could be useful for semi-automated annotation
 }
 
-
- // Remove objects invalid for quantification
-Collection<PathObject> invalidFibreObjects = removeChildless(dataType) // Storing invalid objects, could be useful for semi-automated annotation

@@ -78,7 +78,7 @@ static double calculateDownsampleFactor(imageData, double targetPixelSizeMicrons
 /**
  * This function runs an AimSeg model using DJL in QuPath
  */
-ImagePlus modelInference (uri, layout, inputWidth, inputHeight, padding, inputShape, imageData, server, request) {
+static ImagePlus modelInference(uri, layout, inputWidth, inputHeight, padding, inputShape, imageData, server, request) {
     ImagePlus imp = IJTools.convertToImagePlus(server, request).getImage()
     
     // Get the statistics of the image to get the minimum and maximum pixel values
@@ -86,7 +86,7 @@ ImagePlus modelInference (uri, layout, inputWidth, inputHeight, padding, inputSh
     double min = stats.min
     double max = stats.max
     double difference = max - min
-    
+    def impOutput
     // Apply prediction
     try (def dnn = DjlTools.createDnnModel(uri, layout, inputShape as int[])) {
         def op = ImageOps.buildImageDataOp()
@@ -118,7 +118,7 @@ ImagePlus modelInference (uri, layout, inputWidth, inputHeight, padding, inputSh
  * options is defined as an integer using Interface Measurements fields
  * results table is not given as an argument because the method is never used to measure
  */
-static ImagePlus analyzeParticles (ImagePlus imp, int options, int measurements, double minSize, double maxSize, double minCirc, double maxCirc) {
+static ImagePlus analyzeParticles(ImagePlus imp, int options, int measurements, double minSize, double maxSize, double minCirc, double maxCirc) {
     def rt = new ResultsTable()
     def pa = new ParticleAnalyzer(options, measurements, rt, minSize, maxSize, minCirc, maxCirc)
     ImageProcessor ip = imp.getProcessor()
@@ -136,7 +136,9 @@ static ImagePlus analyzeParticles (ImagePlus imp, int options, int measurements,
  * Method to get an SDT channel from an image plus and return an instance segmentation in the
  * form of QuPath objects.
  */
-void processSDT(ImagePlus imp, String dataType, double targetPixelSizeMicrons, double minDiameterMicrons, String className, int channel, double min_threshold, double max_threshold, double downsample, imageData, request, double translateX = 0, double translateY = 0) {
+static void processSDT(ImagePlus imp, String dataType, double targetPixelSizeMicrons, double minDiameterMicrons,
+                       String className, int channel, double min_threshold, double max_threshold, double downsample,
+                       ImageData<BufferedImage> imageData, request, double translateX = 0, double translateY = 0) {
     // Create ROIs from thresholds
     imp.setC(channel) // Set the channel index (1-based)
     ImageProcessor ip = imp.getProcessor() // Get the ImageProcessor of the specified channel
@@ -153,13 +155,12 @@ void processSDT(ImagePlus imp, String dataType, double targetPixelSizeMicrons, d
     // Create an ImageServer for seed instances
     double minAreaMicrons = Math.PI * Math.pow(minDiameterMicrons / 2, 2)
     double minAreaPixels = minAreaMicrons / Math.pow(targetPixelSizeMicrons, 2) * downsample
-    double minSizePixels
-    if (dataType == "EM") {
-        minSizePixels = minAreaPixels * 0.4
-    } else if (dataType == "BF") {
-        minSizePixels = minAreaPixels * 0.2
+    double minSizePixels = switch(dataType) {
+        case "EM" -> minAreaPixels * 0.4
+        case "BF" -> minAreaPixels * 0.2
+        default -> throw new IllegalArgumentException("Unknown datatype: " + dataType)
     }
-    
+
     def seedServer = new LabeledImageServer.Builder(imageData)
             .backgroundLabel(0, ColorTools.BLACK) // Specify background label (usually 0 or 255)
             .downsample(downsample)    // Choose server resolution; this should match the resolution at which tiles are exported
@@ -179,7 +180,10 @@ void processSDT(ImagePlus imp, String dataType, double targetPixelSizeMicrons, d
     ImageProcessor ipLabels = impLabels.getProcessor()
     
     // Delete all existing objects
-    removeObjects(getCurrentImageData().getHierarchy().getAnnotationObjects().findAll { it.getPathClass() == getPathClass("Seed") }, true)
+    def seeds = getCurrentImageData()
+            .getHierarchy()
+            .getAnnotationObjects().findAll { it.getPathClass() == getPathClass("Seed") }
+    removeObjects(seeds)
     
     // Apply a 2D watershed transform, constraining region growing using an intensity threshold.
     // Parameters:
@@ -202,7 +206,7 @@ void processSDT(ImagePlus imp, String dataType, double targetPixelSizeMicrons, d
     
     // Convert ImageJ ROIs to QuPath detections
     def pathDetectedObjects = roiDetected.collect { roiIJ ->
-        def roi = IJTools.convertToROI(roiIJ, cal, downsample, plane);
+        def roi = IJTools.convertToROI(roiIJ, cal, downsample, plane)
         def detection = PathObjects.createDetectionObject(roi.translate(translateX, translateY), getPathClass(className))
         return detection
     }
@@ -213,7 +217,8 @@ void processSDT(ImagePlus imp, String dataType, double targetPixelSizeMicrons, d
  * Method to get a semantic channel from an image plus and return an instance segmentation in the
  * form of QuPath objects.
  */
-void processSemantic(ImagePlus imp, String className, int channel, int label, double downsample, imageData, request, double translateX, double translateY) {
+static void processSemantic(ImagePlus imp, String className, int channel, int label, double downsample,
+                            ImageData<BufferedImage> imageData, RegionRequest request, double translateX, double translateY) {
     // Create ROIs from thresholds
     imp.setC(channel) // Set the channel index (1-based)
     ImageProcessor ip = imp.getProcessor() // Get the ImageProcessor of the specified channel
@@ -246,72 +251,75 @@ void processSemantic(ImagePlus imp, String className, int channel, int label, do
 /**
  * Segmentation pipeline
  */
+static void runAimSeg() {
+    //Some parameters
 
-//Some parameters
+    // Model file
+    def modelPath = "D:/pcarrillo/Git_Repos/AimSeg-Monai_3Targets/weights/weights_tem.pt" // the path to your model here
+    // temporary path, use weights_tem.pt or weights_brightfield.pt model
+    def uri = Paths.get(modelPath).toUri()
+    def dataType = "EM" // "EM or BF"
 
-// Model file
-def modelPath = "D:/pcarrillo/Git_Repos/AimSeg-Monai_3Targets/weights/weights_tem.pt" // the path to your model here
-// temporary path, use weights_tem.pt or weights_brightfield.pt model
-def uri = Paths.get(modelPath).toUri()
-def dataType = "EM" // "EM or BF"
+    // Image data
+    def imageData = getCurrentImageData()
 
-// Image data
-def imageData = getCurrentImageData()
+    // Model parameters
+    int inputWidth = 512
+    int inputHeight = inputWidth
+    int nChannels = 1
+    def padding = Padding.symmetric(32)
+    def layout = "NCHW"
+    def inputShape = [1, nChannels, inputHeight, inputWidth]
 
-// Model parameters
-int inputWidth = 512
-int inputHeight = inputWidth
-int nChannels = 1
-def padding = Padding.symmetric(32)
-def layout = "NCHW"
-def inputShape = [1, nChannels, inputHeight, inputWidth]
+    // Image parameters
+    double targetPixelSizeMicrons
+    double minDiameterMicrons
+    if (dataType == "EM") {
+        targetPixelSizeMicrons = 0.008 // optimised pixel size for electron microscopy
+        minDiameterMicrons = 0.2
+    } else if (dataType == "BF") {
+        targetPixelSizeMicrons = 0.07 // optimised pixel size for brightfield
+        minDiameterMicrons = 1.0
+    }
+    double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, true)
 
-// Image parameters
-double targetPixelSizeMicrons
-double minDiameterMicrons
-if (dataType == "EM") {
-    targetPixelSizeMicrons = 0.008 // optimised pixel size for electron microscopy
-    minDiameterMicrons = 0.2
-} else if (dataType == "BF") {
-    targetPixelSizeMicrons = 0.07 // optimised pixel size for brightfield
-    minDiameterMicrons = 1.0
+    // Post-processing parameters
+    double min_threshold = 0.7
+    double max_threshold = 1
+
+    // Get an ImageJ representation of the output
+    ImagePlus impOutput
+
+    // Use a selected annotation if we have one, otherwise request pixels for the full image
+    double translateX = 0.0
+    double translateY = 0.0
+
+    def selectedObject = getSelectedObject()
+    RegionRequest request
+    def server = imageData.getServer()
+    if (selectedObject != null && selectedObject.isAnnotation()) {
+        def roi = selectedObject.getROI()
+        translateX = roi.getBoundsX()
+        translateY = roi.getBoundsY()
+        request = RegionRequest.createInstance(server.getPath(), downsample, roi)
+    } else {
+        request = RegionRequest.createInstance(server, downsample)
+    }
+
+    // Run model on the specified image region
+    impOutput = modelInference (uri, layout, inputWidth, inputHeight, padding, inputShape, imageData, server, request)
+
+    // Instance segmentation on model prediction
+    processSDT(impOutput, dataType, targetPixelSizeMicrons, minDiameterMicrons, "Fibre", 2, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY)
+    processSDT(impOutput, dataType, targetPixelSizeMicrons, minDiameterMicrons, "Axon", 3, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY)
+    if (dataType == "EM") {
+        processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, imageData, request, translateX, translateY)
+    }
+
+    // lock selected annotation
+    if (selectedObject != null && !selectedObject.isLocked()) {
+        selectedObject.setLocked(true)
+    }
 }
-double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, true)
 
-// Post-processing parameters
-double min_threshold = 0.7
-double max_threshold = 1
 
-// Get an ImageJ representation of the output
-ImagePlus impOutput
-
-// Use a selected annotation if we have one, otherwise request pixels for the full image
-double translateX = 0.0
-double translateY = 0.0
-
-def selectedObject = getSelectedObject()
-RegionRequest request
-def server = imageData.getServer()
-if (selectedObject != null && selectedObject.isAnnotation()) {
-    def roi = selectedObject.getROI()
-    translateX = roi.getBoundsX()
-    translateY = roi.getBoundsY()
-    request = RegionRequest.createInstance(server.getPath(), downsample, roi)
-} else {
-    request = RegionRequest.createInstance(server, downsample)
-}
-
-// Run model on the specified image region
-impOutput = modelInference (uri, layout, inputWidth, inputHeight, padding, inputShape, imageData, server, request)
-
-// Instance segmentation on model prediction
-processSDT(impOutput, dataType, targetPixelSizeMicrons, minDiameterMicrons, "Fibre", 2, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY)
-processSDT(impOutput, dataType, targetPixelSizeMicrons, minDiameterMicrons, "Axon", 3, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY)
-if (dataType == "EM") {
-    processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, imageData, request, translateX, translateY)
-}
-
-// lock selected annotation
-if (selectedObject != null && !selectedObject.isLocked()) {
-    selectedObject.setLocked(true)
-}

@@ -15,6 +15,8 @@
 
 import qupath.lib.roi.RoiTools
 
+import java.awt.image.BufferedImage
+
 import static qupath.lib.scripting.QP.*
 
 /**
@@ -35,7 +37,7 @@ import static qupath.lib.scripting.QP.*
  * in square microns, ensuring accurate and meaningful results.
  */
 
-void computeFeatures(ImageData imageData, String dataType) {
+void computeFeatures(ImageData<BufferedImage> imageData, String dataType) {
     // Get calibration
     def pixelHeightMicrons = imageData.getServer().getPixelCalibration().getPixelHeightMicrons()
     def pixelWidthMicrons = imageData.getServer().getPixelCalibration().getPixelWidthMicrons()
@@ -119,10 +121,7 @@ void computeFeatures(ImageData imageData, String dataType) {
 /**
  * Quantification pipeline
  */
- 
-// get image data
-String dataType = "EM" // EM or BF
-ImageData imageData = getCurrentImageData()
-
-// Feature extraction
-computeFeatures(imageData, dataType)
+static void runQuantification(String dataType) {
+    // Feature extraction
+    computeFeatures(getCurrentImageData(), dataType)
+}
