@@ -1,5 +1,6 @@
 package qupath.ext.aimseg;
 
+import java.util.ResourceBundle;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.Property;
@@ -40,20 +41,20 @@ public class AimSegExtension implements QuPathExtension, GitHubProject {
 	 * A resource bundle containing all the text used by the extension. This may be useful for translation to other languages.
 	 * Note that this is optional, and you can define the text within the code and FXML files that you use.
 	 */
-//	private static final ResourceBundle resources = ResourceBundle.getBundle("qupath.ext.aimseg.ui.strings");
+	private static final ResourceBundle resources = ResourceBundle.getBundle("qupath.ext.aimseg.ui.strings");
 	private static final Logger logger = LoggerFactory.getLogger(AimSegExtension.class);
 
 	/**
 	 * Display name for your extension
 	 * TODO: define this
 	 */
-	private static final String EXTENSION_NAME = "AimSeg Extension"; // resources.getString("name");
+	private static final String EXTENSION_NAME = resources.getString("extension.title");
 
 	/**
 	 * Short description, used under 'Extensions > Installed extensions'
 	 * TODO: define this
 	 */
-	private static final String EXTENSION_DESCRIPTION = "An extension for AimSeg"; // resources.getString("description");
+	private static final String EXTENSION_DESCRIPTION = resources.getString("extension.description");
 
 	/**
 	 * QuPath version that the extension is designed to work with.

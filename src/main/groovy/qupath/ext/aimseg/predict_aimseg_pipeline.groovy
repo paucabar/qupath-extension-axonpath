@@ -7,13 +7,6 @@
  * Prior to running this script, ensure that the DJL extension is installed in QuPath 
  * and PyTorch has been downloaded – see https://qupath.readthedocs.io/en/stable/docs/deep/djl.html
  */
-
-
-/**
- * Some imports
- */
- 
-
 import ij.IJ
 import ij.ImagePlus
 import ij.measure.Calibration
@@ -39,14 +32,11 @@ import qupath.lib.roi.RoiTools
 import qupath.opencv.ops.ImageOps
 import qupath.opencv.tools.OpenCVTools
 
+import java.awt.image.BufferedImage
 import java.nio.file.Paths
 
 import static qupath.lib.scripting.QP.*
 
-
-/**
- * Define some methods
- */
 
 /**
  * Function to calculate the downsample factor based on target pixel size
@@ -261,7 +251,7 @@ static void runAimSeg() {
     def dataType = "EM" // "EM or BF"
 
     // Image data
-    def imageData = getCurrentImageData()
+    ImageData<BufferedImage> imageData = getCurrentImageData()
 
     // Model parameters
     int inputWidth = 512
@@ -272,15 +262,8 @@ static void runAimSeg() {
     def inputShape = [1, nChannels, inputHeight, inputWidth]
 
     // Image parameters
-    double targetPixelSizeMicrons
-    double minDiameterMicrons
-    if (dataType == "EM") {
-        targetPixelSizeMicrons = 0.008 // optimised pixel size for electron microscopy
-        minDiameterMicrons = 0.2
-    } else if (dataType == "BF") {
-        targetPixelSizeMicrons = 0.07 // optimised pixel size for brightfield
-        minDiameterMicrons = 1.0
-    }
+    double targetPixelSizeMicrons = dataType == "EM" ? 0.008 : 0.07
+    double minDiameterMicrons = dataType == "BF" ? 0.2 : 1.0
     double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, true)
 
     // Post-processing parameters
