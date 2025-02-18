@@ -1,19 +1,28 @@
 package qupath.ext.aimseg.ui;
 
+import java.util.List;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
+import javafx.scene.control.ChoiceBox;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.VBox;
+import org.controlsfx.control.SearchableComboBox;
 import qupath.fx.dialogs.Dialogs;
 
 import java.io.IOException;
 import java.util.ResourceBundle;
+import qupath.lib.scripting.QP;
 
 /**
  * Controller for UI pane contained in interface.fxml
  */
 public class AimSegController extends BorderPane {
     private static final ResourceBundle resources = ResourceBundle.getBundle("qupath.ext.aimseg.ui.strings");
+
+    @FXML
+    private SearchableComboBox<String> modelChoiceBox;
+    @FXML
+    private ChoiceBox<String> deviceChoiceBox;
 
     /**
      * Create a new instance of the interface controller.
@@ -38,15 +47,46 @@ public class AimSegController extends BorderPane {
         loader.setRoot(this);
         loader.setController(this);
         loader.load();
+        modelChoiceBox.getItems().addAll(List.of("Brightfield model", "EM model", "Local brightfield model", "Local EM model"));
+        deviceChoiceBox.getItems().addAll(List.of("cpu", "gpu"));
     }
 
     @FXML
     private void runAimSeg() {
         Dialogs.showInfoNotification(
-                resources.getString("run.title"),
-                resources.getString("run.message")
+                "AimSeg extension",
+                """
+                        This method should run inference on the current image/annotation.
+                        Probably it should retain a reference to the PathObjects it creates,
+                        so that we can enable editing them later.
+                        """
         );
     }
 
+    @FXML
+    private void toggleEditing() {
+        Dialogs.showInfoNotification(
+                "AimSeg extension",
+                "This method should convert all AimSeg detections to annotations, or vice versa."
+        );
+    }
+
+    @FXML
+    private void recalculateHierarchy() {
+        Dialogs.showInfoNotification(
+                "AimSeg extension",
+                "This method should re-do the hierarchy logic after editing."
+        );
+    }
+
+    @FXML
+    private void selectAllAnnotations() {
+        QP.selectAnnotations();
+    }
+
+    @FXML
+    private void selectAllDetections() {
+        QP.selectDetections();
+    }
 
 }

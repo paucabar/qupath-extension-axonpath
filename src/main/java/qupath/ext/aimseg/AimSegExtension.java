@@ -149,8 +149,8 @@ public class AimSegExtension implements QuPathExtension, GitHubProject {
 	 * @param qupath The QuPath GUI
 	 */
 	private void addMenuItem(QuPathGUI qupath) {
-		var menu = qupath.getMenu("Extensions>" + EXTENSION_NAME, true);
-		MenuItem menuItem = new MenuItem("My menu item");
+		var menu = qupath.getMenu("Extensions", false);
+		MenuItem menuItem = new MenuItem("AimSeg extension");
 		menuItem.setOnAction(e -> createStage());
 		menuItem.disableProperty().bind(enableExtensionProperty.not());
 		menu.getItems().add(menuItem);

@@ -16,6 +16,7 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Text?>
 <?import org.controlsfx.control.SearchableComboBox?>
+<?import org.controlsfx.control.SegmentedButton?>
 <fx:root maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefWidth="330" stylesheets="@aimseg.css" type="BorderPane" xmlns="http://javafx.com/javafx/22" xmlns:fx="http://javafx.com/fxml/1">
     <center>
         <VBox>
@@ -88,9 +89,16 @@
                                <Label alignment="CENTER" styleClass="aimseg-sub-title" text="%ui.selection.alt" textAlignment="CENTER" />
                                <HBox alignment="CENTER" styleClass="standard-spacing">
                                    <Label styleClass="regular" text="%ui.selection.sub-label" />
-                                   <Button fx:id="selectAllAnnotationsButton" text="%ui.selection.all-annotations">
-                                       <tooltip><Tooltip text="%ui.selection.all-annotations.tooltip" /></tooltip>
-                                   </Button>
+                                   <SegmentedButton fx:id="segButton" maxWidth="500">
+                                       <buttons>
+                                           <ToggleButton fx:id="toggleSelectAllAnnotations" onAction="#selectAllAnnotations" text="%ui.selection.all-annotations">
+                                               <tooltip><Tooltip text="%ui.selection.all-annotations.tooltip" /></tooltip>
+                                           </ToggleButton>
+                                           <ToggleButton fx:id="toggleSelectAllDetections" onAction="#selectAllDetections" text="%ui.selection.all-detections">
+                                               <tooltip><Tooltip text="%ui.selection.all-detections.tooltip" /></tooltip>
+                                           </ToggleButton>
+                                       </buttons>
+                                   </SegmentedButton>
                                </HBox>
                            </children>
                         </VBox>
@@ -101,7 +109,7 @@
                             <VBox alignment="CENTER">
                                 <HBox alignment="CENTER" styleClass="standard-spacing">
                                     <children>
-                                        <Button fx:id="runButton" prefWidth="252.0" text="%ui.run">
+                                        <Button fx:id="runButton" prefWidth="252.0" text="%ui.run" onAction="#runAimSeg">
                                             <tooltip><Tooltip text="%ui.run.tooltip" /></tooltip>
                                         </Button>
                                     </children>
@@ -117,12 +125,12 @@
             <TitledPane animated="false" maxHeight="Infinity" text="%ui.postprocess.pane" VBox.vgrow="NEVER">
                 <VBox alignment="TOP_CENTER" spacing="7.5" styleClass="standard-padding">
                     <children>
-                        <ToggleButton text="%ui.postprocess.edit">
+                        <ToggleButton text="%ui.postprocess.edit" onAction="#toggleEditing">
                             <tooltip>
                                 <Tooltip text="%ui.postprocess.edit.tooltip" />
                             </tooltip>
                         </ToggleButton>
-                        <Button text="%ui.postprocess.recalculate-hierarchy">
+                        <Button text="%ui.postprocess.recalculate-hierarchy" onAction="#recalculateHierarchy">
                             <tooltip>
                                 <Tooltip text="%ui.postprocess.recalculate-hierarchy.tooltip" />
                             </tooltip>
@@ -146,7 +154,7 @@
                                 </tooltip>
                             </Label>
                             <Pane minWidth="5" HBox.hgrow="ALWAYS" />
-                            <ChoiceBox fx:id="deviceChoices" prefWidth="75.0">
+                            <ChoiceBox fx:id="deviceChoiceBox" prefWidth="75.0">
                                 <tooltip><Tooltip text="%ui.options.device.tooltip" /></tooltip>
                             </ChoiceBox>
                         </children>
