@@ -53,6 +53,7 @@ public class AimSegController extends BorderPane {
 
     @FXML
     private void runAimSeg() {
+        runAimSegGroovy();
         Dialogs.showInfoNotification(
                 "AimSeg extension",
                 """
