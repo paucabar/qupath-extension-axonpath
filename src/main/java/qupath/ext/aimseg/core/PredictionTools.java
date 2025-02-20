@@ -119,9 +119,9 @@ public class PredictionTools {
      * options is defined as an integer using Interface Measurements fields
      * results table is not given as an argument because the method is never used to measure
      */
-    static ImagePlus analyzeParticles(ImagePlus imp, int options, int measurements, double minSize, double maxSize, double minCirc, double maxCirc) {
+    static ImagePlus analyzeParticles(ImagePlus imp, int options, int measurements, double minSize, double maxSize, double minCircularity, double maxCircularity) {
         var rt = new ResultsTable();
-        var pa = new ParticleAnalyzer(options, measurements, rt, minSize, maxSize, minCirc, maxCirc);
+        var pa = new ParticleAnalyzer(options, measurements, rt, minSize, maxSize, minCircularity, maxCircularity);
         ImageProcessor ip = imp.getProcessor();
         ip.setBinaryThreshold();
         pa.setHideOutputImage(true);

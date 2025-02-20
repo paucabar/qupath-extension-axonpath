@@ -11,7 +11,9 @@ import javafx.scene.layout.BorderPane;
 import org.controlsfx.control.SearchableComboBox;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import qupath.ext.aimseg.core.HierarchyTools;
 import qupath.ext.aimseg.core.PredictionTools;
+import qupath.ext.aimseg.core.PytorchManager;
 import qupath.fx.dialogs.Dialogs;
 
 import java.io.IOException;
@@ -58,8 +60,7 @@ public class AimSegController extends BorderPane {
         loader.setRoot(this);
         loader.setController(this);
         loader.load();
-        modelChoiceBox.getItems().addAll(List.of("Brightfield model", "EM model", "Local brightfield model", "Local EM model"));
-        deviceChoiceBox.getItems().addAll(List.of("cpu", "gpu"));
+        deviceChoiceBox.getItems().addAll(PytorchManager.getAvailableDevices());
     }
 
     @FXML
