@@ -22,13 +22,15 @@ import qupath.lib.scripting.QP;
 
 
 import static java.util.stream.Collectors.toCollection;
+import static qupath.ext.aimseg.core.HierarchyTools.DataType.BRIGHTFIELD;
+import static qupath.ext.aimseg.core.HierarchyTools.DataType.ELECTRON_MICROSCOPY;
 import static qupath.lib.scripting.QP.getDetectionObjects;
 
 /**
  * This class provides tools to establish meaningful hierarchies, recognising that a fibre can contain multiple
  * inner tongue objects, and an inner tongue object may contain multiple axon objects.
  */
-class HierarchyTools {
+public class HierarchyTools {
     private static final Logger logger = LoggerFactory.getLogger(HierarchyTools.class);
 
     /** Compute the intersection over Object2 area (IoO2A) between two object classes
@@ -94,7 +96,7 @@ class HierarchyTools {
      * @param dataType A string ("EM" or "BF") specifying the type of data and hierarchy logic to apply.
      * @return A collection of invalid Fibre objects that were removed.
      */
-    static Collection<PathObject> removeChildless(String dataType) {
+    static Collection<PathObject> removeChildless(DataType dataType) {
         // Get all Fibre objects
         Collection<PathObject> fibreObjects = getDetectionObjects().stream()
                 .filter(po -> po.getPathClass() == PathClass.getInstance("Fibre"))
@@ -105,13 +107,13 @@ class HierarchyTools {
 
         // Iterate through each Fibre object
         for (var fibre: fibreObjects) {
-            if (dataType.equals("EM")) {
+            if (dataType == ELECTRON_MICROSCOPY) {
                 // For EM: Fibre > Inner Tongue > Axon hierarchy
                 Collection<PathObject> firstLevelChildren = fibre.getChildObjects().stream()
                         .filter(it -> it.getPathClass() == PathClass.getInstance("Inner Tongue"))
-                        .collect(toCollection(ArrayList::new));
+                        .collect(toCollection(ArrayList::new)); // toList makes an immutable list by default
                 Collection<PathObject> secondLevelChildren = firstLevelChildren.stream()
-                        .flatMap(pathObject -> pathObject.getChildObjects().stream())
+                        .flatMap(pathObject -> pathObject.getChildObjects().stream()) // flatmap lets us merge lists of children into one list
                         .filter(it -> it.getPathClass() == PathClass.getInstance("Axon"))
                         .toList();
                 // Check if the Fibre object has at least one Inner Tongue and one Axon
@@ -119,7 +121,7 @@ class HierarchyTools {
                     firstLevelChildren.addAll(secondLevelChildren);
                     validFibreToChildrenMap.put(fibre, firstLevelChildren);
                 }
-            } else if (dataType.equals("BF")) {
+            } else if (dataType == BRIGHTFIELD) {
                 // For BF: Fibre > Axon hierarchy
                 Collection<PathObject> firstLevelChildren = fibre.getChildObjects().stream()
                         .filter(it -> it.getPathClass() == PathClass.getInstance("Axon"))
@@ -165,7 +167,7 @@ class HierarchyTools {
         return parentless;
     }
 
-    static void updateHierarchy(String dataType) {
+    static void updateHierarchy(DataType dataType) {
         Collection<PathObject> fibreObjects = getDetectionObjects().stream()
                 .filter(it -> (it.getPathClass() == PathClass.getInstance("Fibre")))
                 .toList();
@@ -173,7 +175,7 @@ class HierarchyTools {
                 .filter(it -> (it.getPathClass() == PathClass.getInstance("Axon")))
                 .toList();
         Collection<PathObject> innerTongueObjects;
-        if (dataType.equals("EM")) {
+        if (dataType == ELECTRON_MICROSCOPY) {
             innerTongueObjects = getDetectionObjects().stream()
                     .filter(it -> it.getPathClass() == PathClass.getInstance("Inner Tongue"))
                     .toList();
@@ -192,9 +194,9 @@ class HierarchyTools {
             Collection<PathObject> fibreObjects,
             Collection<PathObject> axonObjects,
             Collection<PathObject> innerTongueObjects,
-            String dataType) {
+            DataType dataType) {
 
-        if (dataType.equals("EM")) {
+        if (dataType == ELECTRON_MICROSCOPY) {
             logger.info("Comparing {} fibre objects to {} inner tongue objects", fibreObjects.size(), innerTongueObjects.size());
             QP.removeObjects(innerTongueObjects);
             establishHierarchyBasedOnIoO2(fibreObjects, innerTongueObjects);
@@ -207,7 +209,7 @@ class HierarchyTools {
             Collection<PathObject> combined_objects = Stream.concat(axonObjects.stream(), innerTongueObjects.stream()).toList();
             Collection<PathObject> invalidParentlessObjects = removeParentless(combined_objects); // Storing invalid objects, could be useful for semi-automated annotation
 
-        } else if (dataType.equals("BF")) {
+        } else if (dataType == BRIGHTFIELD) {
             logger.info("Comparing {} fibre objects to {} axon objects", fibreObjects.size(), axonObjects.size());
             QP.removeObjects(axonObjects);
             establishHierarchyBasedOnIoO2(fibreObjects, axonObjects);
@@ -221,7 +223,7 @@ class HierarchyTools {
         Collection<PathObject> invalidFibreObjects = removeChildless(dataType); // Storing invalid objects, could be useful for semi-automated annotation
     }
 
-    enum DataType {
+    public enum DataType {
         BRIGHTFIELD,
         ELECTRON_MICROSCOPY;
     }

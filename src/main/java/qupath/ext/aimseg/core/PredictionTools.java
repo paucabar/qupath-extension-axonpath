@@ -137,7 +137,7 @@ public class PredictionTools {
      * Method to get an SDT channel from an image plus and return an instance segmentation in the
      * form of QuPath objects.
      */
-    static Collection<PathObject> processSDT(ImagePlus imp, String dataType, double targetPixelSizeMicrons, double minDiameterMicrons,
+    static Collection<PathObject> processSDT(ImagePlus imp, HierarchyTools.DataType dataType, double targetPixelSizeMicrons, double minDiameterMicrons,
                                              String className, int channel, double min_threshold, double max_threshold, double downsample,
                                              ImageData<BufferedImage> imageData, RegionRequest request, double translateX, double translateY) throws IOException {
         // Create ROIs from thresholds
@@ -157,9 +157,8 @@ public class PredictionTools {
         double minAreaMicrons = Math.PI * Math.pow(minDiameterMicrons / 2, 2);
         double minAreaPixels = minAreaMicrons / Math.pow(targetPixelSizeMicrons, 2) * downsample;
         double minSizePixels = switch (dataType) {
-            case "EM" -> minAreaPixels * 0.4;
-            case "BF" -> minAreaPixels * 0.2;
-            default -> throw new IllegalArgumentException("Unknown datatype: " + dataType);
+            case ELECTRON_MICROSCOPY -> minAreaPixels * 0.4;
+            case BRIGHTFIELD -> minAreaPixels * 0.2;
         };
 
         var seedServer = new LabeledImageServer.Builder(imageData)
@@ -253,12 +252,11 @@ public class PredictionTools {
     /**
      * Segmentation pipeline
      */
-    public static Collection<PathObject> runAimSeg(Path modelPath) throws IOException {
+    public static Collection<PathObject> runAimSeg(Path modelPath, HierarchyTools.DataType dataType) throws IOException {
         //Some parameters
 
         // temporary path, use weights_tem.pt or weights_brightfield.pt model
         var uri = modelPath.toUri();
-        var dataType = "EM"; // "EM or BF"
 
         // Image data
         ImageData<BufferedImage> imageData = QP.getCurrentImageData();
@@ -272,8 +270,8 @@ public class PredictionTools {
         int[] inputShape = new int[] {1, nChannels, inputHeight, inputWidth};
 
         // Image parameters
-        double targetPixelSizeMicrons = dataType.equals("EM") ? 0.008 : 0.07;
-        double minDiameterMicrons = dataType.equals("BF") ? 0.2 : 1.0;
+        double targetPixelSizeMicrons = dataType == HierarchyTools.DataType.ELECTRON_MICROSCOPY ? 0.008 : 0.07;
+        double minDiameterMicrons = dataType == HierarchyTools.DataType.ELECTRON_MICROSCOPY ? 0.2 : 1.0;
         double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, true);
 
         // Post-processing parameters
@@ -308,7 +306,7 @@ public class PredictionTools {
         var axons = processSDT(impOutput, dataType, targetPixelSizeMicrons, minDiameterMicrons, "Axon", 3, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY);
         QP.addObjects(axons);
         Collection<PathObject> tongues = List.of();
-        if (dataType.equals("EM")) {
+        if (dataType == HierarchyTools.DataType.ELECTRON_MICROSCOPY) {
             tongues = processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, imageData, request, translateX, translateY);
             QP.addObjects(tongues);
         }
@@ -321,6 +319,5 @@ public class PredictionTools {
         }
         return Stream.of(fibres.stream(), axons.stream(), tongues.stream()).flatMap(s -> s).collect(Collectors.toSet());
     }
-
 
 }

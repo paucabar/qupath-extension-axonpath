@@ -2,10 +2,10 @@ package qupath.ext.aimseg.ui;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import javafx.beans.property.StringProperty;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.layout.BorderPane;
 import org.controlsfx.control.SearchableComboBox;
@@ -28,9 +28,11 @@ public class AimSegController extends BorderPane {
     private static final Logger logger = LoggerFactory.getLogger(AimSegController.class);
 
     @FXML
-    private SearchableComboBox<String> modelChoiceBox;
+    private SearchableComboBox<Path> modelChoiceBox;
     @FXML
     private ChoiceBox<String> deviceChoiceBox;
+    @FXML
+    private CheckBox bfCheckBox;
     private final StringProperty modelDir = PathPrefs.createPersistentPreference("aimseg.model.dir", null);
 
     /**
@@ -62,20 +64,22 @@ public class AimSegController extends BorderPane {
 
     @FXML
     private void runAimSeg() throws IOException {
-        if (modelDir.get() == null) {
+        Path modelPath = modelChoiceBox.getSelectionModel().getSelectedItem();
+        if (modelPath == null) {
             Dialogs.showErrorMessage(
                     "AimSeg extension",
                     """
-                            Model directory is not set - point me to the directory containing a "weights_tem.pt" or "weights_brightfield.pt" object.
+                            Model not set - point me to the directory containing a models, then select one.
                             """
             );
+            return;
         }
-        Path modelPath = Path.of(modelDir.get());
         if (!Files.exists(modelPath)) {
             Dialogs.showErrorMessage("AimSeg extension", "Model not found!");
         }
-        var pathObjects = PredictionTools.runAimSeg(modelPath);
-        logger.info(pathObjects.size() + " objects created by AimSeg");
+        var datatype = bfCheckBox.isSelected() ? HierarchyTools.DataType.BRIGHTFIELD : HierarchyTools.DataType.ELECTRON_MICROSCOPY;
+        var pathObjects = PredictionTools.runAimSeg(modelPath, datatype);
+        logger.info("{} objects created by AimSeg", pathObjects.size());
     }
 
     @FXML
@@ -106,7 +110,13 @@ public class AimSegController extends BorderPane {
 
     @FXML
     private void chooseModel() {
-        this.modelDir.set(FileChoosers.promptForFile("Select a brightfield or TEM model", FileChoosers.createExtensionFilter("PyTorch file", "pt")).toString());
+        this.modelDir.set(FileChoosers.promptForDirectory().toString());
+        try (var pathStream = Files.list(Path.of(modelDir.get()))) {
+            modelChoiceBox.getItems().addAll(pathStream.filter(p -> p.toString().endsWith(".pt")).toList());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
     }
 
 }
