@@ -157,10 +157,10 @@ class HierarchyTools {
      * Identify all the objects with no parent object
      */
     static Collection<PathObject> removeParentless(Collection<PathObject> objects) {
-        logger.info("Checking " + objects.size() + " objects");
+        logger.info("Checking {} objects", objects.size());
         // level 1 because image is the 'root'
         var parentless = objects.stream().filter(it -> it.getLevel() == 1).toList();
-        logger.info("Found " + parentless.size() + " parentless objects");
+        logger.info("Found {} parentless objects", parentless.size());
         QP.removeObjects(parentless); // true to keep children objects
         return parentless;
     }
@@ -195,11 +195,11 @@ class HierarchyTools {
             String dataType) {
 
         if (dataType.equals("EM")) {
-            logger.info("Comparing " + fibreObjects.size() + " fibre objects to " + innerTongueObjects.size() + " inner tongue objects");
+            logger.info("Comparing {} fibre objects to {} inner tongue objects", fibreObjects.size(), innerTongueObjects.size());
             QP.removeObjects(innerTongueObjects);
             establishHierarchyBasedOnIoO2(fibreObjects, innerTongueObjects);
 
-            logger.info("Comparing " + innerTongueObjects.size() + " inner tongue objects to " + axonObjects.size() + " axon objects");
+            logger.info("Comparing {} inner tongue objects to {} axon objects", innerTongueObjects.size(), axonObjects.size());
             QP.removeObjects(axonObjects);
             establishHierarchyBasedOnIoO2(innerTongueObjects, axonObjects);
 
@@ -208,7 +208,7 @@ class HierarchyTools {
             Collection<PathObject> invalidParentlessObjects = removeParentless(combined_objects); // Storing invalid objects, could be useful for semi-automated annotation
 
         } else if (dataType.equals("BF")) {
-            logger.info("Comparing " + fibreObjects.size() + " fibre objects to " + axonObjects.size() + " axon objects");
+            logger.info("Comparing {} fibre objects to {} axon objects", fibreObjects.size(), axonObjects.size());
             QP.removeObjects(axonObjects);
             establishHierarchyBasedOnIoO2(fibreObjects, axonObjects);
 
