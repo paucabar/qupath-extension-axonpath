@@ -66,15 +66,15 @@ public class AimSegController extends BorderPane {
             Dialogs.showErrorMessage(
                     "AimSeg extension",
                     """
-                            Model directory is not set - point me to the directory containing a "weights_tem.pt" or "weights_bf.pt" object.
+                            Model directory is not set - point me to the directory containing a "weights_tem.pt" or "weights_brightfield.pt" object.
                             """
             );
         }
         var temPath = Path.of(modelDir.get(), "weights_tem.pt");
-        var bfPath = Path.of(modelDir.get(), "weights_bf.pt");
+        var bfPath = Path.of(modelDir.get(), "weights_brightfield.pt");
         var modelPath = Files.exists(temPath) ? temPath : bfPath;
         if (!Files.exists(modelPath)) {
-            Dialogs.showErrorMessage("AimSeg extension", "weights_tem.pt or weights_bf.pt model not found!");
+            Dialogs.showErrorMessage("AimSeg extension", "weights_tem.pt or weights_brightfield.pt model not found!");
         }
         var pathObjects = PredictionTools.runAimSeg(modelPath);
         logger.info(pathObjects.size() + " objects created by AimSeg");
