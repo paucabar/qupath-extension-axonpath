@@ -65,7 +65,7 @@
                                         <Tooltip fx:id="tooltipModelDir" text="%ui.options.directory.tooltip" />
                                     </tooltip>
                                 </Label>
-                                <Button fx:id="modelDirButton" mnemonicParsing="false" styleClass="standard-message">
+                                <Button fx:id="modelDirButton" mnemonicParsing="false" onAction="#chooseModelDir" styleClass="standard-message">
                                     <tooltip>
                                         <Tooltip text="%ui.options.directory-not-set.tooltip" />
                                     </tooltip>

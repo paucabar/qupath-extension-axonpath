@@ -272,8 +272,8 @@ public class PredictionTools {
         int[] inputShape = new int[] {1, nChannels, inputHeight, inputWidth};
 
         // Image parameters
-        double targetPixelSizeMicrons = dataType == "EM" ? 0.008 : 0.07;
-        double minDiameterMicrons = dataType == "BF" ? 0.2 : 1.0;
+        double targetPixelSizeMicrons = dataType.equals("EM") ? 0.008 : 0.07;
+        double minDiameterMicrons = dataType.equals("BF") ? 0.2 : 1.0;
         double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, true);
 
         // Post-processing parameters
@@ -312,6 +312,8 @@ public class PredictionTools {
             tongues = processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, imageData, request, translateX, translateY);
             QP.addObjects(tongues);
         }
+
+        HierarchyTools.updateHierarchy(fibres, axons, tongues, dataType);
 
         // lock selected annotation
         if (selectedObject != null && !selectedObject.isLocked()) {

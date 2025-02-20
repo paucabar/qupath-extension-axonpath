@@ -30,7 +30,7 @@ class QuantificationTools {
      * The assumed hierarchy is as follows: Fibre > Inner Tongue > Axon.
      * This means that each Fibre object contains one or more Inner Tongue objects,
      * and each Inner Tongue object contains one or more Axon objects.
-     *
+     * <p>
      * The function sums the areas of all Axon and Inner Tongue objects within a Fibre object
      * to produce a single area measurement for each Fibre.
      * All area calculations take into account the image calibration, specifically the pixel size
