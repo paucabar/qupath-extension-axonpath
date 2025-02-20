@@ -70,11 +70,9 @@ public class AimSegController extends BorderPane {
                             """
             );
         }
-        var temPath = Path.of(modelDir.get(), "weights_tem.pt");
-        var bfPath = Path.of(modelDir.get(), "weights_brightfield.pt");
-        var modelPath = Files.exists(temPath) ? temPath : bfPath;
+        Path modelPath = Path.of(modelDir.get());
         if (!Files.exists(modelPath)) {
-            Dialogs.showErrorMessage("AimSeg extension", "weights_tem.pt or weights_brightfield.pt model not found!");
+            Dialogs.showErrorMessage("AimSeg extension", "Model not found!");
         }
         var pathObjects = PredictionTools.runAimSeg(modelPath);
         logger.info(pathObjects.size() + " objects created by AimSeg");
@@ -107,8 +105,8 @@ public class AimSegController extends BorderPane {
     }
 
     @FXML
-    private void chooseModelDir() {
-        this.modelDir.set(FileChoosers.promptForDirectory().toString());
+    private void chooseModel() {
+        this.modelDir.set(FileChoosers.promptForFile("Select a brightfield or TEM model", FileChoosers.createExtensionFilter("PyTorch file", "pt")).toString());
     }
 
 }
