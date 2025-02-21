@@ -148,13 +148,13 @@ public class PredictionTools {
                                              double targetPixelSizeMicrons, double minDiameterMicrons,
                                              String className,
                                              int channel,
-                                             double min_threshold, double max_threshold, double downsample,
+                                             double minThreshold, double maxThreshold, double downsample,
                                              ImageData<BufferedImage> imageData, RegionRequest request,
                                              double translateX, double translateY) throws IOException {
         // Create ROIs from thresholds
         imp.setC(channel); // Set the channel index (1-based)
         ImageProcessor ip = imp.getProcessor(); // Get the ImageProcessor of the specified channel
-        ip.setThreshold(min_threshold, max_threshold, ImageProcessor.NO_LUT_UPDATE);
+        ip.setThreshold(minThreshold, maxThreshold, ImageProcessor.NO_LUT_UPDATE);
         var multipartRoi = SimpleThresholding.thresholdToROI(ip, request); // generates a multi-part ROI including all the thresholded regions
         var roiList = RoiTools.splitROI(multipartRoi); // split the multi-part ROI into separate ROIs
 
@@ -230,17 +230,17 @@ public class PredictionTools {
      * form of QuPath objects.
      */
     static Collection<PathObject> processSemantic(ImagePlus imp, String className, int channel, int label, double downsample,
-                                                  ImageData<BufferedImage> imageData, RegionRequest request, double translateX, double translateY) {
+                                                  double translateX, double translateY) {
         // Create ROIs from thresholds
         imp.setC(channel); // Set the channel index (1-based)
         ImageProcessor ip = imp.getProcessor(); // Get the ImageProcessor of the specified channel
         ip.setThreshold(label, label, ImageProcessor.NO_LUT_UPDATE);
-        ImageProcessor ip_mask = ip.createMask(); // image processor
-        ImagePlus imp_mask = new ImagePlus("Binary Mask", ip_mask); // image processor to image plus
+        ImageProcessor ipMask = ip.createMask(); // image processor
+        ImagePlus impMask = new ImagePlus("Binary Mask", ipMask); // image processor to image plus
 
-        int options_add_manager = ParticleAnalyzer.SHOW_MASKS + ParticleAnalyzer.ADD_TO_MANAGER + ParticleAnalyzer.COMPOSITE_ROIS;
-        int measurements_area = Measurements.AREA;
-        ImagePlus binaryMask = analyzeParticles(imp_mask, options_add_manager, measurements_area, 0, Double.POSITIVE_INFINITY, 0, 1);
+        int optionsAddManager = ParticleAnalyzer.SHOW_MASKS + ParticleAnalyzer.ADD_TO_MANAGER + ParticleAnalyzer.COMPOSITE_ROIS;
+        int measurementsArea = Measurements.AREA;
+        ImagePlus binaryMask = analyzeParticles(impMask, optionsAddManager, measurementsArea, 0, Double.POSITIVE_INFINITY, 0, 1);
         RoiManager rm = RoiManager.getInstance();
         rm.setVisible(false);
         var roiList = rm.getRoisAsArray();
@@ -266,11 +266,9 @@ public class PredictionTools {
                                                    ImageData<BufferedImage> imageData,
                                                    PathObject parentObject,
                                                    DataType dataType) throws IOException {
-        //Some parameters
 
         // temporary path, use weights_tem.pt or weights_brightfield.pt model
         var uri = modelPath.toUri();
-
 
         // Model parameters
         int inputWidth = 512;
@@ -286,57 +284,53 @@ public class PredictionTools {
         double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, true);
 
         // Post-processing parameters
-        double min_threshold = 0.7;
-        double max_threshold = 1;
+        double minThreshold = 0.7;
+        double maxThreshold = 1;
 
         // Get an ImageJ representation of the output
         ImagePlus impOutput;
 
         // Use a selected annotation if we have one, otherwise request pixels for the full image
-        double translateX = 0.0;
-        double translateY = 0.0;
-
-        RegionRequest request;
         var server = imageData.getServer();
-        if (parentObject != null && parentObject.isAnnotation()) {
-            var roi = parentObject.getROI();
-            translateX = roi.getBoundsX();
-            translateY = roi.getBoundsY();
-            request = RegionRequest.createInstance(server.getPath(), downsample, roi);
-        } else {
-            request = RegionRequest.createInstance(server, downsample);
-        }
+        var roi = parentObject.getROI();
+        double translateX = roi.getBoundsX();
+        double translateY = roi.getBoundsY();
+        RegionRequest request = RegionRequest.createInstance(server.getPath(), downsample, roi);
 
         // Run model on the specified image region
         impOutput = modelInference(uri, layout, inputWidth, inputHeight, padding, inputShape, imageData, server, request);
 
         // Instance segmentation on model prediction
-        var fibres = processSDT(impOutput, imageData.getHierarchy(), dataType, targetPixelSizeMicrons, minDiameterMicrons, "Fibre", 2, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY);
-        imageData.getHierarchy().addObjects(fibres);
-        var axons = processSDT(impOutput, imageData.getHierarchy(), dataType, targetPixelSizeMicrons, minDiameterMicrons, "Axon", 3, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY);
-        imageData.getHierarchy().addObjects(axons);
+        var fibres = processSDT(impOutput, imageData.getHierarchy(), dataType, targetPixelSizeMicrons, minDiameterMicrons,
+                "Fibre", 2, minThreshold, maxThreshold, downsample, imageData, request, translateX, translateY);
+//        imageData.getHierarchy().addObjects(fibres);
+        var axons = processSDT(impOutput, imageData.getHierarchy(), dataType, targetPixelSizeMicrons, minDiameterMicrons,
+                "Axon", 3, minThreshold, maxThreshold, downsample, imageData, request, translateX, translateY);
+//        imageData.getHierarchy().addObjects(axons);
         Collection<PathObject> tongues = List.of();
         if (dataType == DataType.ELECTRON_MICROSCOPY) {
-            tongues = processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, imageData, request, translateX, translateY);
-            imageData.getHierarchy().addObjects(tongues);
+            tongues = processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, translateX, translateY);
+//            imageData.getHierarchy().addObjects(tongues);
         }
 
-        HierarchyTools.updateHierarchy(imageData.getHierarchy(), fibres, axons, tongues, dataType);
+        HierarchyTools.updateHierarchy(imageData.getHierarchy(), parentObject, fibres, axons, tongues, dataType);
 
         // lock selected annotation
-        if (parentObject != null && !parentObject.isLocked()) {
+        if (!parentObject.isLocked()) {
             parentObject.setLocked(true);
         }
-        return Stream.of(fibres.stream(), axons.stream(), tongues.stream()).flatMap(s -> s).collect(Collectors.toSet());
+        return Stream.of(fibres.stream(), axons.stream(), tongues.stream())
+                .flatMap(s -> s) // flattening multiple collections into one
+                .collect(Collectors.toSet());
     }
 
     public enum DataType {
         BRIGHTFIELD,
-        ELECTRON_MICROSCOPY;
+        ELECTRON_MICROSCOPY
     }
 
     public enum TissueType {
         CENTRAL_NERVOUS_SYSTEM,
-        PERIPHERAL_NERVOUS_SYSTEM;
+        PERIPHERAL_NERVOUS_SYSTEM
     }
 }

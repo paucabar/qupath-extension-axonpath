@@ -79,6 +79,10 @@ public class AimSegController extends BorderPane {
         if (!Files.exists(modelPath)) {
             Dialogs.showErrorMessage("AimSeg extension", "Model not found!");
         }
+        // todo: remove this eventually
+        if (QP.getSelectedObject() == null) {
+            QP.createFullImageAnnotation(true);
+        }
         var pathObjects = PredictionTools.runAimSeg(modelPath, QP.getCurrentImageData(), QP.getSelectedObject(), getDataType());
         logger.info("{} objects created by AimSeg", pathObjects.size());
     }
