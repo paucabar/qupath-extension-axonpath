@@ -30,11 +30,11 @@ import qupath.lib.images.servers.PixelType;
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.PathObjects;
 import qupath.lib.objects.classes.PathClass;
+import qupath.lib.objects.hierarchy.PathObjectHierarchy;
 import qupath.lib.regions.ImagePlane;
 import qupath.lib.regions.Padding;
 import qupath.lib.regions.RegionRequest;
 import qupath.lib.roi.RoiTools;
-import qupath.lib.scripting.QP;
 import qupath.opencv.ops.ImageOps;
 import qupath.opencv.tools.OpenCVTools;
 
@@ -50,6 +50,11 @@ import java.awt.image.BufferedImage;
  * and PyTorch has been downloaded – see <a href="https://qupath.readthedocs.io/en/stable/docs/deep/djl.html">the QuPath docs</a>.
  */
 public class PredictionTools {
+
+    private PredictionTools() {
+        throw new UnsupportedOperationException("Do not instantiate this class");
+    }
+
     /**
      * Function to calculate the downsample factor based on target pixel size
      */
@@ -119,9 +124,9 @@ public class PredictionTools {
      * options is defined as an integer using Interface Measurements fields
      * results table is not given as an argument because the method is never used to measure
      */
-    static ImagePlus analyzeParticles(ImagePlus imp, int options, int measurements, double minSize, double maxSize, double minCirc, double maxCirc) {
+    static ImagePlus analyzeParticles(ImagePlus imp, int options, int measurements, double minSize, double maxSize, double minCircularity, double maxCircularity) {
         var rt = new ResultsTable();
-        var pa = new ParticleAnalyzer(options, measurements, rt, minSize, maxSize, minCirc, maxCirc);
+        var pa = new ParticleAnalyzer(options, measurements, rt, minSize, maxSize, minCircularity, maxCircularity);
         ImageProcessor ip = imp.getProcessor();
         ip.setBinaryThreshold();
         pa.setHideOutputImage(true);
@@ -137,9 +142,15 @@ public class PredictionTools {
      * Method to get an SDT channel from an image plus and return an instance segmentation in the
      * form of QuPath objects.
      */
-    static Collection<PathObject> processSDT(ImagePlus imp, String dataType, double targetPixelSizeMicrons, double minDiameterMicrons,
-                                             String className, int channel, double min_threshold, double max_threshold, double downsample,
-                                             ImageData<BufferedImage> imageData, RegionRequest request, double translateX, double translateY) throws IOException {
+    static Collection<PathObject> processSDT(ImagePlus imp,
+                                             PathObjectHierarchy hierarchy,
+                                             DataType dataType,
+                                             double targetPixelSizeMicrons, double minDiameterMicrons,
+                                             String className,
+                                             int channel,
+                                             double min_threshold, double max_threshold, double downsample,
+                                             ImageData<BufferedImage> imageData, RegionRequest request,
+                                             double translateX, double translateY) throws IOException {
         // Create ROIs from thresholds
         imp.setC(channel); // Set the channel index (1-based)
         ImageProcessor ip = imp.getProcessor(); // Get the ImageProcessor of the specified channel
@@ -151,15 +162,14 @@ public class PredictionTools {
         var pathObjects = roiList.stream().map(
                 roi -> PathObjects.createAnnotationObject(roi, PathClass.getInstance("Seed")))
                 .toList();
-        QP.addObjects(pathObjects);
+        hierarchy.addObjects(pathObjects);
 
         // Create an ImageServer for seed instances
         double minAreaMicrons = Math.PI * Math.pow(minDiameterMicrons / 2, 2);
         double minAreaPixels = minAreaMicrons / Math.pow(targetPixelSizeMicrons, 2) * downsample;
         double minSizePixels = switch (dataType) {
-            case "EM" -> minAreaPixels * 0.4;
-            case "BF" -> minAreaPixels * 0.2;
-            default -> throw new IllegalArgumentException("Unknown datatype: " + dataType);
+            case ELECTRON_MICROSCOPY -> minAreaPixels * 0.4;
+            case BRIGHTFIELD -> minAreaPixels * 0.2;
         };
 
         var seedServer = new LabeledImageServer.Builder(imageData)
@@ -181,12 +191,11 @@ public class PredictionTools {
         ImageProcessor ipLabels = impLabels.getProcessor();
 
         // Delete all existing objects
-        var seeds = QP.getCurrentImageData()
-                .getHierarchy()
+        var seeds = hierarchy
                 .getAnnotationObjects().stream()
                 .filter(it -> it.getPathClass() == PathClass.getInstance("Seed"))
                 .toList();
-        QP.removeObjects(seeds);
+        hierarchy.removeObjects(seeds, false);
 
         // Apply a 2D watershed transform, constraining region growing using an intensity threshold.
         // Parameters:
@@ -253,15 +262,15 @@ public class PredictionTools {
     /**
      * Segmentation pipeline
      */
-    public static Collection<PathObject> runAimSeg(Path modelPath) throws IOException {
+    public static Collection<PathObject> runAimSeg(Path modelPath,
+                                                   ImageData<BufferedImage> imageData,
+                                                   PathObject parentObject,
+                                                   DataType dataType) throws IOException {
         //Some parameters
 
         // temporary path, use weights_tem.pt or weights_brightfield.pt model
         var uri = modelPath.toUri();
-        var dataType = "EM"; // "EM or BF"
 
-        // Image data
-        ImageData<BufferedImage> imageData = QP.getCurrentImageData();
 
         // Model parameters
         int inputWidth = 512;
@@ -272,8 +281,8 @@ public class PredictionTools {
         int[] inputShape = new int[] {1, nChannels, inputHeight, inputWidth};
 
         // Image parameters
-        double targetPixelSizeMicrons = dataType.equals("EM") ? 0.008 : 0.07;
-        double minDiameterMicrons = dataType.equals("BF") ? 0.2 : 1.0;
+        double targetPixelSizeMicrons = dataType == DataType.ELECTRON_MICROSCOPY ? 0.008 : 0.07;
+        double minDiameterMicrons = dataType == DataType.ELECTRON_MICROSCOPY ? 0.2 : 1.0;
         double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, true);
 
         // Post-processing parameters
@@ -287,11 +296,10 @@ public class PredictionTools {
         double translateX = 0.0;
         double translateY = 0.0;
 
-        var selectedObject = QP.getSelectedObject();
         RegionRequest request;
         var server = imageData.getServer();
-        if (selectedObject != null && selectedObject.isAnnotation()) {
-            var roi = selectedObject.getROI();
+        if (parentObject != null && parentObject.isAnnotation()) {
+            var roi = parentObject.getROI();
             translateX = roi.getBoundsX();
             translateY = roi.getBoundsY();
             request = RegionRequest.createInstance(server.getPath(), downsample, roi);
@@ -303,24 +311,32 @@ public class PredictionTools {
         impOutput = modelInference(uri, layout, inputWidth, inputHeight, padding, inputShape, imageData, server, request);
 
         // Instance segmentation on model prediction
-        var fibres = processSDT(impOutput, dataType, targetPixelSizeMicrons, minDiameterMicrons, "Fibre", 2, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY);
-        QP.addObjects(fibres);
-        var axons = processSDT(impOutput, dataType, targetPixelSizeMicrons, minDiameterMicrons, "Axon", 3, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY);
-        QP.addObjects(axons);
+        var fibres = processSDT(impOutput, imageData.getHierarchy(), dataType, targetPixelSizeMicrons, minDiameterMicrons, "Fibre", 2, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY);
+        imageData.getHierarchy().addObjects(fibres);
+        var axons = processSDT(impOutput, imageData.getHierarchy(), dataType, targetPixelSizeMicrons, minDiameterMicrons, "Axon", 3, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY);
+        imageData.getHierarchy().addObjects(axons);
         Collection<PathObject> tongues = List.of();
-        if (dataType.equals("EM")) {
+        if (dataType == DataType.ELECTRON_MICROSCOPY) {
             tongues = processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, imageData, request, translateX, translateY);
-            QP.addObjects(tongues);
+            imageData.getHierarchy().addObjects(tongues);
         }
 
-        HierarchyTools.updateHierarchy(fibres, axons, tongues, dataType);
+        HierarchyTools.updateHierarchy(imageData.getHierarchy(), fibres, axons, tongues, dataType);
 
         // lock selected annotation
-        if (selectedObject != null && !selectedObject.isLocked()) {
-            selectedObject.setLocked(true);
+        if (parentObject != null && !parentObject.isLocked()) {
+            parentObject.setLocked(true);
         }
         return Stream.of(fibres.stream(), axons.stream(), tongues.stream()).flatMap(s -> s).collect(Collectors.toSet());
     }
 
+    public enum DataType {
+        BRIGHTFIELD,
+        ELECTRON_MICROSCOPY;
+    }
 
+    public enum TissueType {
+        CENTRAL_NERVOUS_SYSTEM,
+        PERIPHERAL_NERVOUS_SYSTEM;
+    }
 }

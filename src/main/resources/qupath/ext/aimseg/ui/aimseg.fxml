@@ -17,6 +17,7 @@
 <?import javafx.scene.text.Text?>
 <?import org.controlsfx.control.SearchableComboBox?>
 <?import org.controlsfx.control.SegmentedButton?>
+<?import javafx.scene.control.CheckBox?>
 <fx:root maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefWidth="330" stylesheets="@aimseg.css" type="BorderPane" xmlns="http://javafx.com/javafx/22" xmlns:fx="http://javafx.com/fxml/1">
     <center>
         <VBox>
@@ -52,7 +53,14 @@
                                 <String fx:value="standard-padding" />
                             </styleClass>
                         </HBox>
-
+                        <HBox>
+                            <Label text="Brightfield model"/>
+                            <CheckBox fx:id="bfCheckBox"/>
+                            <styleClass>
+                                <String fx:value="standard-spacing" />
+                                <String fx:value="standard-padding" />
+                            </styleClass>
+                        </HBox>
                         <HBox prefHeight="100.0" prefWidth="200.0">
                             <children>
                                 <Label fx:id="labelModelsLocation" alignment="CENTER" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" minWidth="-Infinity" style="-fx-font-style: normal;" styleClass="standard-message" text="%ui.options.directory-name" HBox.hgrow="NEVER" />
@@ -117,24 +125,6 @@
                                 <Label id="labelWarning" fx:id="labelMessage" styleClass="error-message" text="%ui.error.no-selection" VBox.vgrow="ALWAYS" />
                             </VBox>
                         </VBox>
-                    </children>
-                </VBox>
-            </TitledPane>
-
-            <!-- Editing hierarchy -->
-            <TitledPane animated="false" maxHeight="Infinity" text="%ui.postprocess.pane" VBox.vgrow="NEVER">
-                <VBox alignment="TOP_CENTER" spacing="7.5" styleClass="standard-padding">
-                    <children>
-                        <ToggleButton text="%ui.postprocess.edit" onAction="#toggleEditing">
-                            <tooltip>
-                                <Tooltip text="%ui.postprocess.edit.tooltip" />
-                            </tooltip>
-                        </ToggleButton>
-                        <Button text="%ui.postprocess.recalculate-hierarchy" onAction="#recalculateHierarchy">
-                            <tooltip>
-                                <Tooltip text="%ui.postprocess.recalculate-hierarchy.tooltip" />
-                            </tooltip>
-                        </Button>
                     </children>
                 </VBox>
             </TitledPane>

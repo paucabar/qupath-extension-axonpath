@@ -2,22 +2,25 @@ package qupath.ext.aimseg.ui;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import javafx.beans.property.StringProperty;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.layout.BorderPane;
 import org.controlsfx.control.SearchableComboBox;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.aimseg.core.PredictionTools;
+import qupath.ext.aimseg.core.PytorchManager;
+import qupath.ext.aimseg.core.QuantificationTools;
 import qupath.fx.dialogs.Dialogs;
 
 import java.io.IOException;
 import java.util.ResourceBundle;
 import qupath.fx.dialogs.FileChoosers;
 import qupath.lib.gui.prefs.PathPrefs;
+import qupath.lib.objects.classes.PathClass;
 import qupath.lib.scripting.QP;
 
 /**
@@ -28,9 +31,11 @@ public class AimSegController extends BorderPane {
     private static final Logger logger = LoggerFactory.getLogger(AimSegController.class);
 
     @FXML
-    private SearchableComboBox<String> modelChoiceBox;
+    private SearchableComboBox<Path> modelChoiceBox;
     @FXML
     private ChoiceBox<String> deviceChoiceBox;
+    @FXML
+    private CheckBox bfCheckBox;
     private final StringProperty modelDir = PathPrefs.createPersistentPreference("aimseg.model.dir", null);
 
     /**
@@ -56,26 +61,30 @@ public class AimSegController extends BorderPane {
         loader.setRoot(this);
         loader.setController(this);
         loader.load();
-        modelChoiceBox.getItems().addAll(List.of("Brightfield model", "EM model", "Local brightfield model", "Local EM model"));
-        deviceChoiceBox.getItems().addAll(List.of("cpu", "gpu"));
+        deviceChoiceBox.getItems().addAll(PytorchManager.getAvailableDevices());
     }
 
     @FXML
     private void runAimSeg() throws IOException {
-        if (modelDir.get() == null) {
+        Path modelPath = modelChoiceBox.getSelectionModel().getSelectedItem();
+        if (modelPath == null) {
             Dialogs.showErrorMessage(
                     "AimSeg extension",
                     """
-                            Model directory is not set - point me to the directory containing a "weights_tem.pt" or "weights_brightfield.pt" object.
+                            Model not set - point me to the directory containing a models, then select one.
                             """
             );
+            return;
         }
-        Path modelPath = Path.of(modelDir.get());
         if (!Files.exists(modelPath)) {
             Dialogs.showErrorMessage("AimSeg extension", "Model not found!");
         }
-        var pathObjects = PredictionTools.runAimSeg(modelPath);
-        logger.info(pathObjects.size() + " objects created by AimSeg");
+        var pathObjects = PredictionTools.runAimSeg(modelPath, QP.getCurrentImageData(), QP.getSelectedObject(), getDataType());
+        logger.info("{} objects created by AimSeg", pathObjects.size());
+    }
+
+    private PredictionTools.DataType getDataType() {
+        return bfCheckBox.isSelected() ? PredictionTools.DataType.BRIGHTFIELD : PredictionTools.DataType.ELECTRON_MICROSCOPY;
     }
 
     @FXML
@@ -106,7 +115,20 @@ public class AimSegController extends BorderPane {
 
     @FXML
     private void chooseModel() {
-        this.modelDir.set(FileChoosers.promptForFile("Select a brightfield or TEM model", FileChoosers.createExtensionFilter("PyTorch file", "pt")).toString());
+        this.modelDir.set(FileChoosers.promptForDirectory().toString());
+        try (var pathStream = Files.list(Path.of(modelDir.get()))) {
+            modelChoiceBox.getItems().addAll(pathStream.filter(p -> p.toString().endsWith(".pt")).toList());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
+    private void runQuantification() {
+        QuantificationTools.computeFeatures(
+                QP.getCurrentImageData(),
+                QP.getDetectionObjects().stream()
+                        .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
+                        .toList(),
+                getDataType());
+    }
 }
