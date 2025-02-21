@@ -19,6 +19,10 @@ public class PytorchManager {
 
     private static final Logger logger = LoggerFactory.getLogger(PytorchManager.class);
 
+    private PytorchManager() {
+        throw new UnsupportedOperationException("Do not instantiate this class");
+    }
+
     /**
      * Get the PyTorch engine, downloading if necessary.
      * @return the engine if available, or null if this failed

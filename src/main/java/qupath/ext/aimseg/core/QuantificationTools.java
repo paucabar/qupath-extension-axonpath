@@ -25,6 +25,10 @@ import java.awt.image.BufferedImage;
 
 public class QuantificationTools {
 
+    private QuantificationTools() {
+        throw new UnsupportedOperationException("Do not instantiate this class");
+    }
+
     /**
      * This function calculates myelin metrics from QuPath objects organised in a hierarchical structure.
      * The assumed hierarchy is as follows: Fibre > Inner Tongue > Axon.

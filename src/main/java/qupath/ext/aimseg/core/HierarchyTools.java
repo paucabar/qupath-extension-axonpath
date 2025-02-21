@@ -31,6 +31,10 @@ import static qupath.ext.aimseg.core.PredictionTools.DataType.ELECTRON_MICROSCOP
 public class HierarchyTools {
     private static final Logger logger = LoggerFactory.getLogger(HierarchyTools.class);
 
+    private HierarchyTools() {
+        throw new UnsupportedOperationException("Do not instantiate this class");
+    }
+
     /** Compute the intersection over Object2 area (IoO2A) between two object classes
      * and create hierarchical relationships
      * If IoO2A == 1, Object2 is added below Object1 immediately

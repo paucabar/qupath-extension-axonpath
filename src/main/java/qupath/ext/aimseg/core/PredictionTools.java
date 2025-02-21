@@ -50,6 +50,11 @@ import java.awt.image.BufferedImage;
  * and PyTorch has been downloaded – see <a href="https://qupath.readthedocs.io/en/stable/docs/deep/djl.html">the QuPath docs</a>.
  */
 public class PredictionTools {
+
+    private PredictionTools() {
+        throw new UnsupportedOperationException("Do not instantiate this class");
+    }
+
     /**
      * Function to calculate the downsample factor based on target pixel size
      */
