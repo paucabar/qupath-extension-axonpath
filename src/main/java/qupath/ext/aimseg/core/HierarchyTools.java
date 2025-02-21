@@ -148,7 +148,7 @@ public class HierarchyTools {
         Set<PathObject> invalidFibreObjects = new HashSet<>(fibreObjects);
         invalidFibreObjects.removeAll(validFibreToChildrenMap.keySet());
         logger.info("Removing {} invalid Fibre objects...", invalidFibreObjects.size());
-        QP.removeObjects(invalidFibreObjects); // true to remove children
+        QP.removeObjects(invalidFibreObjects);
 
 
         return invalidFibreObjects;
@@ -163,7 +163,7 @@ public class HierarchyTools {
         // level 1 because image is the 'root'
         var parentless = objects.stream().filter(it -> it.getLevel() == 1).toList();
         logger.info("Found {} parentless objects", parentless.size());
-        QP.removeObjects(parentless); // true to keep children objects
+        QP.removeObjects(parentless);
         return parentless;
     }
 
@@ -200,15 +200,19 @@ public class HierarchyTools {
             logger.info("Comparing {} fibre objects to {} inner tongue objects", fibreObjects.size(), innerTongueObjects.size());
             QP.removeObjects(innerTongueObjects);
             establishHierarchyBasedOnIoO2(fibreObjects, innerTongueObjects);
+            innerTongueObjects = getDetectionObjects().stream()
+                    .filter(it -> it.getPathClass() == PathClass.getInstance("Inner Tongue"))
+                    .toList();
 
             logger.info("Comparing {} inner tongue objects to {} axon objects", innerTongueObjects.size(), axonObjects.size());
             QP.removeObjects(axonObjects);
             establishHierarchyBasedOnIoO2(innerTongueObjects, axonObjects);
-
             // Remove objects with an invalid hierarchy
+            axonObjects = getDetectionObjects().stream()
+                    .filter(it -> (it.getPathClass() == PathClass.getInstance("Axon")))
+                    .toList();
             Collection<PathObject> combined_objects = Stream.concat(axonObjects.stream(), innerTongueObjects.stream()).toList();
             Collection<PathObject> invalidParentlessObjects = removeParentless(combined_objects); // Storing invalid objects, could be useful for semi-automated annotation
-
         } else if (dataType == BRIGHTFIELD) {
             logger.info("Comparing {} fibre objects to {} axon objects", fibreObjects.size(), axonObjects.size());
             QP.removeObjects(axonObjects);
@@ -216,7 +220,6 @@ public class HierarchyTools {
 
             // Remove objects with an invalid hierarchy
             Collection<PathObject> invalidParentlessObjects = removeParentless(axonObjects); // Storing invalid objects, could be useful for semi-automated annotation
-
         }
 
         // Remove objects invalid for quantification
