@@ -35,7 +35,6 @@ import qupath.lib.regions.ImagePlane;
 import qupath.lib.regions.Padding;
 import qupath.lib.regions.RegionRequest;
 import qupath.lib.roi.RoiTools;
-import qupath.lib.scripting.QP;
 import qupath.opencv.ops.ImageOps;
 import qupath.opencv.tools.OpenCVTools;
 
@@ -140,7 +139,7 @@ public class PredictionTools {
      */
     static Collection<PathObject> processSDT(ImagePlus imp,
                                              PathObjectHierarchy hierarchy,
-                                             HierarchyTools.DataType dataType,
+                                             DataType dataType,
                                              double targetPixelSizeMicrons, double minDiameterMicrons,
                                              String className,
                                              int channel,
@@ -261,7 +260,7 @@ public class PredictionTools {
     public static Collection<PathObject> runAimSeg(Path modelPath,
                                                    ImageData<BufferedImage> imageData,
                                                    PathObject parentObject,
-                                                   HierarchyTools.DataType dataType) throws IOException {
+                                                   DataType dataType) throws IOException {
         //Some parameters
 
         // temporary path, use weights_tem.pt or weights_brightfield.pt model
@@ -277,8 +276,8 @@ public class PredictionTools {
         int[] inputShape = new int[] {1, nChannels, inputHeight, inputWidth};
 
         // Image parameters
-        double targetPixelSizeMicrons = dataType == HierarchyTools.DataType.ELECTRON_MICROSCOPY ? 0.008 : 0.07;
-        double minDiameterMicrons = dataType == HierarchyTools.DataType.ELECTRON_MICROSCOPY ? 0.2 : 1.0;
+        double targetPixelSizeMicrons = dataType == DataType.ELECTRON_MICROSCOPY ? 0.008 : 0.07;
+        double minDiameterMicrons = dataType == DataType.ELECTRON_MICROSCOPY ? 0.2 : 1.0;
         double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, true);
 
         // Post-processing parameters
@@ -312,7 +311,7 @@ public class PredictionTools {
         var axons = processSDT(impOutput, imageData.getHierarchy(), dataType, targetPixelSizeMicrons, minDiameterMicrons, "Axon", 3, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY);
         imageData.getHierarchy().addObjects(axons);
         Collection<PathObject> tongues = List.of();
-        if (dataType == HierarchyTools.DataType.ELECTRON_MICROSCOPY) {
+        if (dataType == DataType.ELECTRON_MICROSCOPY) {
             tongues = processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, imageData, request, translateX, translateY);
             imageData.getHierarchy().addObjects(tongues);
         }
@@ -326,4 +325,13 @@ public class PredictionTools {
         return Stream.of(fibres.stream(), axons.stream(), tongues.stream()).flatMap(s -> s).collect(Collectors.toSet());
     }
 
+    public enum DataType {
+        BRIGHTFIELD,
+        ELECTRON_MICROSCOPY;
+    }
+
+    public enum TissueType {
+        CENTRAL_NERVOUS_SYSTEM,
+        PERIPHERAL_NERVOUS_SYSTEM;
+    }
 }

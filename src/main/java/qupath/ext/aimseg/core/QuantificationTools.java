@@ -36,7 +36,7 @@ public class QuantificationTools {
      * All area calculations take into account the image calibration, specifically the pixel size
      * in square microns, ensuring accurate and meaningful results.
      */
-    public static void computeFeatures(ImageData<BufferedImage> imageData, Collection<PathObject> parentDetections, HierarchyTools.DataType dataType) {
+    public static void computeFeatures(ImageData<BufferedImage> imageData, Collection<PathObject> parentDetections, PredictionTools.DataType dataType) {
         // Get calibration
         double pixelHeightMicrons = imageData.getServer().getPixelCalibration().getPixelHeightMicrons();
         double pixelWidthMicrons = imageData.getServer().getPixelCalibration().getPixelWidthMicrons();
@@ -61,7 +61,7 @@ public class QuantificationTools {
             double myelinGratio = 0;
 
             // get object areas
-            if (dataType == HierarchyTools.DataType.ELECTRON_MICROSCOPY) {
+            if (dataType == PredictionTools.DataType.ELECTRON_MICROSCOPY) {
                 var childDetections = parent.getChildObjects();
                 for (var child: childDetections) {
                     innerRegionArea += child.getROI().getArea() * pixelSizeSquaredMicrons;
@@ -72,7 +72,7 @@ public class QuantificationTools {
                         axonArea += grandchild.getROI().getArea() * pixelSizeSquaredMicrons;
                     }
                 }
-            } else if (dataType == HierarchyTools.DataType.BRIGHTFIELD) {
+            } else if (dataType == PredictionTools.DataType.BRIGHTFIELD) {
                 var childDetections = parent.getChildObjects();
                 for (var child: childDetections) {
                     axonArea += child.getROI().getArea() * pixelSizeSquaredMicrons;
@@ -90,7 +90,7 @@ public class QuantificationTools {
             double axonDiameter = 2 * Math.sqrt(axonArea / Math.PI);
 
             axonGratio = axonDiameter / fibreDiameter;
-            if (dataType == HierarchyTools.DataType.ELECTRON_MICROSCOPY) {
+            if (dataType == PredictionTools.DataType.ELECTRON_MICROSCOPY) {
                 double inregDiameter = 2 * Math.sqrt(innerRegionArea / Math.PI);
                 myelinGratio = inregDiameter / fibreDiameter;
             }
@@ -102,7 +102,7 @@ public class QuantificationTools {
             parent.getMeasurementList().put("Axon Objects", axonObjects);
             parent.getMeasurementList().put("Fibre Circularity", fibreCircularity);
             parent.getMeasurementList().put("Fibre Solidity", fibreSolidity);
-            if (dataType == HierarchyTools.DataType.ELECTRON_MICROSCOPY) {
+            if (dataType == PredictionTools.DataType.ELECTRON_MICROSCOPY) {
                 parent.getMeasurementList().put("Inner Region Area", innerRegionArea);
                 parent.getMeasurementList().put("Myelin g-ratio", myelinGratio);
             }

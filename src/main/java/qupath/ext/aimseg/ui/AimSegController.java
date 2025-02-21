@@ -11,7 +11,6 @@ import javafx.scene.layout.BorderPane;
 import org.controlsfx.control.SearchableComboBox;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import qupath.ext.aimseg.core.HierarchyTools;
 import qupath.ext.aimseg.core.PredictionTools;
 import qupath.ext.aimseg.core.PytorchManager;
 import qupath.ext.aimseg.core.QuantificationTools;
@@ -84,8 +83,8 @@ public class AimSegController extends BorderPane {
         logger.info("{} objects created by AimSeg", pathObjects.size());
     }
 
-    private HierarchyTools.DataType getDataType() {
-        return bfCheckBox.isSelected() ? HierarchyTools.DataType.BRIGHTFIELD : HierarchyTools.DataType.ELECTRON_MICROSCOPY;
+    private PredictionTools.DataType getDataType() {
+        return bfCheckBox.isSelected() ? PredictionTools.DataType.BRIGHTFIELD : PredictionTools.DataType.ELECTRON_MICROSCOPY;
     }
 
     @FXML

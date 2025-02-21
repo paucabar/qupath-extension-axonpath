@@ -21,8 +21,8 @@ import qupath.lib.roi.interfaces.ROI;
 
 
 import static java.util.stream.Collectors.toCollection;
-import static qupath.ext.aimseg.core.HierarchyTools.DataType.BRIGHTFIELD;
-import static qupath.ext.aimseg.core.HierarchyTools.DataType.ELECTRON_MICROSCOPY;
+import static qupath.ext.aimseg.core.PredictionTools.DataType.BRIGHTFIELD;
+import static qupath.ext.aimseg.core.PredictionTools.DataType.ELECTRON_MICROSCOPY;
 
 /**
  * This class provides tools to establish meaningful hierarchies, recognising that a fibre can contain multiple
@@ -94,7 +94,7 @@ public class HierarchyTools {
      * @param dataType A string ("EM" or "BF") specifying the type of data and hierarchy logic to apply.
      * @return A collection of invalid Fibre objects that were removed.
      */
-    static Collection<PathObject> removeChildless(PathObjectHierarchy hierarchy, DataType dataType) {
+    static Collection<PathObject> removeChildless(PathObjectHierarchy hierarchy, PredictionTools.DataType dataType) {
         // Get all Fibre objects
         Collection<PathObject> fibreObjects = hierarchy.getDetectionObjects().stream()
                 .filter(po -> po.getPathClass() == PathClass.getInstance("Fibre"))
@@ -163,7 +163,7 @@ public class HierarchyTools {
         return parentless;
     }
 
-    static void updateHierarchy(DataType dataType, PathObjectHierarchy hierarchy) {
+    static void updateHierarchy(PredictionTools.DataType dataType, PathObjectHierarchy hierarchy) {
         Collection<PathObject> fibreObjects = hierarchy.getDetectionObjects().stream()
                 .filter(it -> (it.getPathClass() == PathClass.getInstance("Fibre")))
                 .toList();
@@ -191,7 +191,7 @@ public class HierarchyTools {
             Collection<PathObject> fibreObjects,
             Collection<PathObject> axonObjects,
             Collection<PathObject> innerTongueObjects,
-            DataType dataType) {
+            PredictionTools.DataType dataType) {
 
         if (dataType == ELECTRON_MICROSCOPY) {
             logger.info("Comparing {} fibre objects to {} inner tongue objects", fibreObjects.size(), innerTongueObjects.size());
@@ -221,11 +221,6 @@ public class HierarchyTools {
 
         // Remove objects invalid for quantification
         Collection<PathObject> invalidFibreObjects = removeChildless(hierarchy, dataType); // Storing invalid objects, could be useful for semi-automated annotation
-    }
-
-    public enum DataType {
-        BRIGHTFIELD,
-        ELECTRON_MICROSCOPY;
     }
 
 }
