@@ -266,6 +266,8 @@ public class PredictionTools {
                                                    ImageData<BufferedImage> imageData,
                                                    PathObject parentObject,
                                                    DataType dataType) throws IOException {
+        // ensure we're not creating duplicates etc
+        parentObject.getChildObjects().clear();
 
         // temporary path, use weights_tem.pt or weights_brightfield.pt model
         var uri = modelPath.toUri();
