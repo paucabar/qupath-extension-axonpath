@@ -14,12 +14,14 @@ import org.slf4j.LoggerFactory;
 import qupath.ext.aimseg.core.HierarchyTools;
 import qupath.ext.aimseg.core.PredictionTools;
 import qupath.ext.aimseg.core.PytorchManager;
+import qupath.ext.aimseg.core.QuantificationTools;
 import qupath.fx.dialogs.Dialogs;
 
 import java.io.IOException;
 import java.util.ResourceBundle;
 import qupath.fx.dialogs.FileChoosers;
 import qupath.lib.gui.prefs.PathPrefs;
+import qupath.lib.objects.classes.PathClass;
 import qupath.lib.scripting.QP;
 
 /**
@@ -78,9 +80,12 @@ public class AimSegController extends BorderPane {
         if (!Files.exists(modelPath)) {
             Dialogs.showErrorMessage("AimSeg extension", "Model not found!");
         }
-        var datatype = bfCheckBox.isSelected() ? HierarchyTools.DataType.BRIGHTFIELD : HierarchyTools.DataType.ELECTRON_MICROSCOPY;
-        var pathObjects = PredictionTools.runAimSeg(modelPath, datatype);
+        var pathObjects = PredictionTools.runAimSeg(modelPath, QP.getCurrentImageData(), QP.getSelectedObject(), getDataType());
         logger.info("{} objects created by AimSeg", pathObjects.size());
+    }
+
+    private HierarchyTools.DataType getDataType() {
+        return bfCheckBox.isSelected() ? HierarchyTools.DataType.BRIGHTFIELD : HierarchyTools.DataType.ELECTRON_MICROSCOPY;
     }
 
     @FXML
@@ -117,7 +122,14 @@ public class AimSegController extends BorderPane {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-
     }
 
+    private void runQuantification() {
+        QuantificationTools.computeFeatures(
+                QP.getCurrentImageData(),
+                QP.getDetectionObjects().stream()
+                        .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
+                        .toList(),
+                getDataType());
+    }
 }

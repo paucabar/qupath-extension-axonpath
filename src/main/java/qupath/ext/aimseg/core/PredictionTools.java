@@ -30,6 +30,7 @@ import qupath.lib.images.servers.PixelType;
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.PathObjects;
 import qupath.lib.objects.classes.PathClass;
+import qupath.lib.objects.hierarchy.PathObjectHierarchy;
 import qupath.lib.regions.ImagePlane;
 import qupath.lib.regions.Padding;
 import qupath.lib.regions.RegionRequest;
@@ -137,9 +138,15 @@ public class PredictionTools {
      * Method to get an SDT channel from an image plus and return an instance segmentation in the
      * form of QuPath objects.
      */
-    static Collection<PathObject> processSDT(ImagePlus imp, HierarchyTools.DataType dataType, double targetPixelSizeMicrons, double minDiameterMicrons,
-                                             String className, int channel, double min_threshold, double max_threshold, double downsample,
-                                             ImageData<BufferedImage> imageData, RegionRequest request, double translateX, double translateY) throws IOException {
+    static Collection<PathObject> processSDT(ImagePlus imp,
+                                             PathObjectHierarchy hierarchy,
+                                             HierarchyTools.DataType dataType,
+                                             double targetPixelSizeMicrons, double minDiameterMicrons,
+                                             String className,
+                                             int channel,
+                                             double min_threshold, double max_threshold, double downsample,
+                                             ImageData<BufferedImage> imageData, RegionRequest request,
+                                             double translateX, double translateY) throws IOException {
         // Create ROIs from thresholds
         imp.setC(channel); // Set the channel index (1-based)
         ImageProcessor ip = imp.getProcessor(); // Get the ImageProcessor of the specified channel
@@ -151,7 +158,7 @@ public class PredictionTools {
         var pathObjects = roiList.stream().map(
                 roi -> PathObjects.createAnnotationObject(roi, PathClass.getInstance("Seed")))
                 .toList();
-        QP.addObjects(pathObjects);
+        hierarchy.addObjects(pathObjects);
 
         // Create an ImageServer for seed instances
         double minAreaMicrons = Math.PI * Math.pow(minDiameterMicrons / 2, 2);
@@ -180,12 +187,11 @@ public class PredictionTools {
         ImageProcessor ipLabels = impLabels.getProcessor();
 
         // Delete all existing objects
-        var seeds = QP.getCurrentImageData()
-                .getHierarchy()
+        var seeds = hierarchy
                 .getAnnotationObjects().stream()
                 .filter(it -> it.getPathClass() == PathClass.getInstance("Seed"))
                 .toList();
-        QP.removeObjects(seeds);
+        hierarchy.removeObjects(seeds, false);
 
         // Apply a 2D watershed transform, constraining region growing using an intensity threshold.
         // Parameters:
@@ -252,14 +258,15 @@ public class PredictionTools {
     /**
      * Segmentation pipeline
      */
-    public static Collection<PathObject> runAimSeg(Path modelPath, HierarchyTools.DataType dataType) throws IOException {
+    public static Collection<PathObject> runAimSeg(Path modelPath,
+                                                   ImageData<BufferedImage> imageData,
+                                                   PathObject parentObject,
+                                                   HierarchyTools.DataType dataType) throws IOException {
         //Some parameters
 
         // temporary path, use weights_tem.pt or weights_brightfield.pt model
         var uri = modelPath.toUri();
 
-        // Image data
-        ImageData<BufferedImage> imageData = QP.getCurrentImageData();
 
         // Model parameters
         int inputWidth = 512;
@@ -285,11 +292,10 @@ public class PredictionTools {
         double translateX = 0.0;
         double translateY = 0.0;
 
-        var selectedObject = QP.getSelectedObject();
         RegionRequest request;
         var server = imageData.getServer();
-        if (selectedObject != null && selectedObject.isAnnotation()) {
-            var roi = selectedObject.getROI();
+        if (parentObject != null && parentObject.isAnnotation()) {
+            var roi = parentObject.getROI();
             translateX = roi.getBoundsX();
             translateY = roi.getBoundsY();
             request = RegionRequest.createInstance(server.getPath(), downsample, roi);
@@ -301,21 +307,21 @@ public class PredictionTools {
         impOutput = modelInference(uri, layout, inputWidth, inputHeight, padding, inputShape, imageData, server, request);
 
         // Instance segmentation on model prediction
-        var fibres = processSDT(impOutput, dataType, targetPixelSizeMicrons, minDiameterMicrons, "Fibre", 2, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY);
-        QP.addObjects(fibres);
-        var axons = processSDT(impOutput, dataType, targetPixelSizeMicrons, minDiameterMicrons, "Axon", 3, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY);
-        QP.addObjects(axons);
+        var fibres = processSDT(impOutput, imageData.getHierarchy(), dataType, targetPixelSizeMicrons, minDiameterMicrons, "Fibre", 2, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY);
+        imageData.getHierarchy().addObjects(fibres);
+        var axons = processSDT(impOutput, imageData.getHierarchy(), dataType, targetPixelSizeMicrons, minDiameterMicrons, "Axon", 3, min_threshold, max_threshold, downsample, imageData, request, translateX, translateY);
+        imageData.getHierarchy().addObjects(axons);
         Collection<PathObject> tongues = List.of();
         if (dataType == HierarchyTools.DataType.ELECTRON_MICROSCOPY) {
             tongues = processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, imageData, request, translateX, translateY);
-            QP.addObjects(tongues);
+            imageData.getHierarchy().addObjects(tongues);
         }
 
-        HierarchyTools.updateHierarchy(fibres, axons, tongues, dataType);
+        HierarchyTools.updateHierarchy(imageData.getHierarchy(), fibres, axons, tongues, dataType);
 
         // lock selected annotation
-        if (selectedObject != null && !selectedObject.isLocked()) {
-            selectedObject.setLocked(true);
+        if (parentObject != null && !parentObject.isLocked()) {
+            parentObject.setLocked(true);
         }
         return Stream.of(fibres.stream(), axons.stream(), tongues.stream()).flatMap(s -> s).collect(Collectors.toSet());
     }

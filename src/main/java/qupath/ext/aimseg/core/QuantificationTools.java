@@ -11,19 +11,19 @@ package qupath.ext.aimseg.core;
 
 
 
-import qupath.lib.objects.classes.PathClass;
+import java.util.Collection;
+import qupath.lib.objects.PathObject;
 import qupath.lib.roi.RoiTools;
 import qupath.lib.images.ImageData;
 
 import java.awt.image.BufferedImage;
-import qupath.lib.scripting.QP;
 
 
 /**
  * Define some methods
  */
 
-class QuantificationTools {
+public class QuantificationTools {
 
     /**
      * This function calculates myelin metrics from QuPath objects organised in a hierarchical structure.
@@ -36,8 +36,7 @@ class QuantificationTools {
      * All area calculations take into account the image calibration, specifically the pixel size
      * in square microns, ensuring accurate and meaningful results.
      */
-
-    static void computeFeatures(ImageData<BufferedImage> imageData, String dataType) {
+    public static void computeFeatures(ImageData<BufferedImage> imageData, Collection<PathObject> parentDetections, HierarchyTools.DataType dataType) {
         // Get calibration
         double pixelHeightMicrons = imageData.getServer().getPixelCalibration().getPixelHeightMicrons();
         double pixelWidthMicrons = imageData.getServer().getPixelCalibration().getPixelWidthMicrons();
@@ -49,8 +48,6 @@ class QuantificationTools {
 
         // Use the pixel size (assuming isotropic calibration)
         double pixelSizeSquaredMicrons = pixelHeightMicrons * pixelWidthMicrons;
-
-        var parentDetections = QP.getDetectionObjects().stream().filter(it -> it.getPathClass() == PathClass.getInstance("Fibre")).toList();
 
         for (var parent: parentDetections) {
             // define metrics
@@ -64,7 +61,7 @@ class QuantificationTools {
             double myelinGratio = 0;
 
             // get object areas
-            if (dataType.equals("EM")) {
+            if (dataType == HierarchyTools.DataType.ELECTRON_MICROSCOPY) {
                 var childDetections = parent.getChildObjects();
                 for (var child: childDetections) {
                     innerRegionArea += child.getROI().getArea() * pixelSizeSquaredMicrons;
@@ -75,7 +72,7 @@ class QuantificationTools {
                         axonArea += grandchild.getROI().getArea() * pixelSizeSquaredMicrons;
                     }
                 }
-            } else if (dataType.equals("BF")) {
+            } else if (dataType == HierarchyTools.DataType.BRIGHTFIELD) {
                 var childDetections = parent.getChildObjects();
                 for (var child: childDetections) {
                     axonArea += child.getROI().getArea() * pixelSizeSquaredMicrons;
@@ -93,7 +90,7 @@ class QuantificationTools {
             double axonDiameter = 2 * Math.sqrt(axonArea / Math.PI);
 
             axonGratio = axonDiameter / fibreDiameter;
-            if (dataType.equals("EM")) {
+            if (dataType == HierarchyTools.DataType.ELECTRON_MICROSCOPY) {
                 double inregDiameter = 2 * Math.sqrt(innerRegionArea / Math.PI);
                 myelinGratio = inregDiameter / fibreDiameter;
             }
@@ -105,21 +102,12 @@ class QuantificationTools {
             parent.getMeasurementList().put("Axon Objects", axonObjects);
             parent.getMeasurementList().put("Fibre Circularity", fibreCircularity);
             parent.getMeasurementList().put("Fibre Solidity", fibreSolidity);
-            if (dataType.equals("EM")) {
+            if (dataType == HierarchyTools.DataType.ELECTRON_MICROSCOPY) {
                 parent.getMeasurementList().put("Inner Region Area", innerRegionArea);
                 parent.getMeasurementList().put("Myelin g-ratio", myelinGratio);
             }
 
         }
-    }
-
-
-    /**
-     * Quantification pipeline
-     */
-    static void runQuantification(String dataType) {
-        // Feature extraction
-        computeFeatures(QP.getCurrentImageData(), dataType);
     }
 
 }
