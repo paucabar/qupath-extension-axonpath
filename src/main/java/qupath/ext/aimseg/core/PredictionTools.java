@@ -216,11 +216,11 @@ public class PredictionTools {
         ImagePlane plane = ImagePlane.getDefaultPlane();
         Calibration cal = imp.getCalibration();
 
-        // Convert ImageJ ROIs to QuPath detections
+        // Convert ImageJ ROIs to QuPath annotations
         return roiDetected.stream().map(
                 roiIJ -> {
                     var roi = IJTools.convertToROI(roiIJ, cal, downsample, plane);
-                    return PathObjects.createDetectionObject(roi.translate(translateX, translateY), PathClass.getInstance(className));
+                    return PathObjects.createAnnotationObject(roi.translate(translateX, translateY), PathClass.getInstance(className));
                 })
                 .collect(Collectors.toSet());
     }
@@ -246,14 +246,14 @@ public class PredictionTools {
         var roiList = rm.getRoisAsArray();
         rm.close();
 
-        // Convert ImageJ ROIs to QuPath detections
+        // Convert ImageJ ROIs to QuPath annotations
         ImagePlane plane = ImagePlane.getDefaultPlane();
         Calibration cal = imp.getCalibration();
 
         return Arrays.stream(roiList)
                 .map(roi -> {
                     var roiIJ = IJTools.convertToROI(roi, cal, downsample, plane);
-                    return PathObjects.createDetectionObject(roiIJ.translate(translateX, translateY), PathClass.getInstance(className));
+                    return PathObjects.createAnnotationObject(roiIJ.translate(translateX, translateY), PathClass.getInstance(className));
                 })
                 .collect(Collectors.toSet());
     }

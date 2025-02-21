@@ -88,22 +88,6 @@ public class AimSegController extends BorderPane {
     }
 
     @FXML
-    private void toggleEditing() {
-        Dialogs.showInfoNotification(
-                "AimSeg extension",
-                "This method should convert all AimSeg detections to annotations, or vice versa."
-        );
-    }
-
-    @FXML
-    private void recalculateHierarchy() {
-        Dialogs.showInfoNotification(
-                "AimSeg extension",
-                "This method should re-do the hierarchy logic after editing."
-        );
-    }
-
-    @FXML
     private void selectAllAnnotations() {
         QP.selectAnnotations();
     }
@@ -126,7 +110,7 @@ public class AimSegController extends BorderPane {
     private void runQuantification() {
         QuantificationTools.computeFeatures(
                 QP.getCurrentImageData(),
-                QP.getDetectionObjects().stream()
+                QP.getAnnotationObjects().stream()
                         .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
                         .toList(),
                 getDataType());

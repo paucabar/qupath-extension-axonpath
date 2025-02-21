@@ -67,8 +67,8 @@ public class HierarchyTools {
                         Geometry intersectionGeometry2 = GeometryTools.homogenizeGeometryCollection(intersectionGeometry);
                         ROI intersectionROI = GeometryTools.geometryToROI(intersectionGeometry2, secondaryObject.getROI().getImagePlane());
 
-                        // Create the intersection object as a detection with the same PathClass
-                        PathObject intersectionObject = PathObjects.createDetectionObject(intersectionROI, secondaryObject.getPathClass());
+                        // Create the intersection object as an annotation with the same PathClass
+                        PathObject intersectionObject = PathObjects.createAnnotationObject(intersectionROI, secondaryObject.getPathClass());
 
                         // Replace the secondary object with the intersection object
                         //pathHierarchy.removeObject(secondaryObject, false) // Remove the original object
@@ -100,7 +100,7 @@ public class HierarchyTools {
      */
     static Collection<PathObject> removeChildless(PathObjectHierarchy hierarchy, PredictionTools.DataType dataType) {
         // Get all Fibre objects
-        Collection<PathObject> fibreObjects = hierarchy.getDetectionObjects().stream()
+        Collection<PathObject> fibreObjects = hierarchy.getAnnotationObjects().stream()
                 .filter(po -> po.getPathClass() == PathClass.getInstance("Fibre"))
                 .toList();
 
@@ -168,15 +168,15 @@ public class HierarchyTools {
     }
 
     static void updateHierarchy(PredictionTools.DataType dataType, PathObjectHierarchy hierarchy) {
-        Collection<PathObject> fibreObjects = hierarchy.getDetectionObjects().stream()
+        Collection<PathObject> fibreObjects = hierarchy.getAnnotationObjects().stream()
                 .filter(it -> (it.getPathClass() == PathClass.getInstance("Fibre")))
                 .toList();
-        Collection<PathObject> axonObjects = hierarchy.getDetectionObjects().stream()
+        Collection<PathObject> axonObjects = hierarchy.getAnnotationObjects().stream()
                 .filter(it -> (it.getPathClass() == PathClass.getInstance("Axon")))
                 .toList();
         Collection<PathObject> innerTongueObjects;
         if (dataType == ELECTRON_MICROSCOPY) {
-            innerTongueObjects = hierarchy.getDetectionObjects().stream()
+            innerTongueObjects = hierarchy.getAnnotationObjects().stream()
                     .filter(it -> it.getPathClass() == PathClass.getInstance("Inner Tongue"))
                     .toList();
 
@@ -201,7 +201,7 @@ public class HierarchyTools {
             logger.info("Comparing {} fibre objects to {} inner tongue objects", fibreObjects.size(), innerTongueObjects.size());
             hierarchy.removeObjects(innerTongueObjects, true);
             establishHierarchyBasedOnIoO2(fibreObjects, innerTongueObjects);
-            innerTongueObjects = hierarchy.getDetectionObjects().stream()
+            innerTongueObjects = hierarchy.getAnnotationObjects().stream()
                     .filter(it -> it.getPathClass() == PathClass.getInstance("Inner Tongue"))
                     .toList();
 
@@ -209,7 +209,7 @@ public class HierarchyTools {
             hierarchy.removeObjects(axonObjects, true);
             establishHierarchyBasedOnIoO2(innerTongueObjects, axonObjects);
             // Remove objects with an invalid hierarchy
-            axonObjects = hierarchy.getDetectionObjects().stream()
+            axonObjects = hierarchy.getAnnotationObjects().stream()
                     .filter(it -> (it.getPathClass() == PathClass.getInstance("Axon")))
                     .toList();
             Collection<PathObject> combined_objects = Stream.concat(axonObjects.stream(), innerTongueObjects.stream()).toList();
