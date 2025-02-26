@@ -62,7 +62,7 @@ public class AimSegController extends BorderPane {
         loader.setController(this);
         loader.load();
         deviceChoiceBox.getItems().addAll(PytorchManager.getAvailableDevices());
-        refreshModels(Path.of(modelDir.get()));
+        refreshModels(modelDir.get());
     }
 
     @FXML
@@ -117,14 +117,18 @@ public class AimSegController extends BorderPane {
     @FXML
     private void chooseModel() {
         this.modelDir.set(FileChoosers.promptForDirectory().toString());
-        refreshModels(Path.of(modelDir.get()));
+        refreshModels(modelDir.get());
     }
 
-    private void refreshModels(Path path) {
-        modelChoiceBox.getItems().clear();
-        if (path == null || !Files.exists(path)) {
+    private void refreshModels(String pathString) {
+        if (pathString == null) {
             return;
         }
+        var path = Path.of(pathString);
+        if (!Files.exists(path)) {
+            return;
+        }
+        modelChoiceBox.getItems().clear();
         try (var pathStream = Files.list(path)) {
             modelChoiceBox.getItems().addAll(pathStream.filter(p -> p.toString().endsWith(".pt")).toList());
         } catch (IOException e) {
