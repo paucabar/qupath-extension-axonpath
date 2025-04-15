@@ -80,28 +80,16 @@ public class AimSegController extends BorderPane {
         if (!Files.exists(modelPath)) {
             Dialogs.showErrorMessage("AimSeg extension", "Model not found!");
         }
+        // todo: remove this eventually
+        if (QP.getSelectedObject() == null) {
+            QP.createFullImageAnnotation(true);
+        }
         var pathObjects = PredictionTools.runAimSeg(modelPath, QP.getCurrentImageData(), QP.getSelectedObject(), getDataType());
         logger.info("{} objects created by AimSeg", pathObjects.size());
     }
 
     private PredictionTools.DataType getDataType() {
         return bfCheckBox.isSelected() ? PredictionTools.DataType.BRIGHTFIELD : PredictionTools.DataType.ELECTRON_MICROSCOPY;
-    }
-
-    @FXML
-    private void toggleEditing() {
-        Dialogs.showInfoNotification(
-                "AimSeg extension",
-                "This method should convert all AimSeg detections to annotations, or vice versa."
-        );
-    }
-
-    @FXML
-    private void recalculateHierarchy() {
-        Dialogs.showInfoNotification(
-                "AimSeg extension",
-                "This method should re-do the hierarchy logic after editing."
-        );
     }
 
     @FXML
@@ -139,7 +127,7 @@ public class AimSegController extends BorderPane {
     private void runQuantification() {
         QuantificationTools.computeFeatures(
                 QP.getCurrentImageData(),
-                QP.getDetectionObjects().stream()
+                QP.getAnnotationObjects().stream()
                         .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
                         .toList(),
                 getDataType());

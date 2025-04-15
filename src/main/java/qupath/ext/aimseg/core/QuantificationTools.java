@@ -1,15 +1,4 @@
 package qupath.ext.aimseg.core;
-/*
- * This script is designed to extract morphometric features from myelinated fibre objects,
- * assigning the features directly to the parent "Fibre" objects to enable efficient
- * generation of a result table. It assumes the image has been processed with AimSeg 
- * detections, where objects are already organised into meaningful hierarchical relationships.
- * As part of the process, the script validates the detected objects, ensuring that 
- * only biologically relevant data is retained by removing invalid objects prior to quantification.
- */
-
-
-
 
 import java.util.Collection;
 import qupath.lib.objects.PathObject;
@@ -20,9 +9,13 @@ import java.awt.image.BufferedImage;
 
 
 /**
- * Define some methods
+ * This class is designed to extract morphometric features from myelinated fibre objects,
+ * assigning the features directly to the parent "Fibre" objects to enable efficient
+ * generation of a result table. It assumes the image has been processed with AimSeg
+ * objects, where objects are already organised into meaningful hierarchical relationships.
+ * As part of the process, the script validates the detected objects, ensuring that
+ * only biologically relevant data is retained by removing invalid objects prior to quantification.
  */
-
 public class QuantificationTools {
 
     private QuantificationTools() {
@@ -40,7 +33,7 @@ public class QuantificationTools {
      * All area calculations take into account the image calibration, specifically the pixel size
      * in square microns, ensuring accurate and meaningful results.
      */
-    public static void computeFeatures(ImageData<BufferedImage> imageData, Collection<PathObject> parentDetections, PredictionTools.DataType dataType) {
+    public static void computeFeatures(ImageData<BufferedImage> imageData, Collection<PathObject> parentObjects, PredictionTools.DataType dataType) {
         // Get calibration
         double pixelHeightMicrons = imageData.getServer().getPixelCalibration().getPixelHeightMicrons();
         double pixelWidthMicrons = imageData.getServer().getPixelCalibration().getPixelWidthMicrons();
@@ -53,7 +46,7 @@ public class QuantificationTools {
         // Use the pixel size (assuming isotropic calibration)
         double pixelSizeSquaredMicrons = pixelHeightMicrons * pixelWidthMicrons;
 
-        for (var parent: parentDetections) {
+        for (var parent: parentObjects) {
             // define metrics
             double axonArea = 0;
             double fibreArea = 0;
@@ -66,21 +59,21 @@ public class QuantificationTools {
 
             // get object areas
             if (dataType == PredictionTools.DataType.ELECTRON_MICROSCOPY) {
-                var childDetections = parent.getChildObjects();
-                for (var child: childDetections) {
+                var childObjects = parent.getChildObjects();
+                for (var child: childObjects) {
                     innerRegionArea += child.getROI().getArea() * pixelSizeSquaredMicrons;
-                    var grandchildDetections = child.getChildObjects();
-                    axonObjects += grandchildDetections.size();
+                    var grandchildObjects = child.getChildObjects();
+                    axonObjects += grandchildObjects.size();
 
-                    for (var grandchild: grandchildDetections) {
+                    for (var grandchild: grandchildObjects) {
                         axonArea += grandchild.getROI().getArea() * pixelSizeSquaredMicrons;
                     }
                 }
             } else if (dataType == PredictionTools.DataType.BRIGHTFIELD) {
-                var childDetections = parent.getChildObjects();
-                for (var child: childDetections) {
+                var childObjects = parent.getChildObjects();
+                for (var child: childObjects) {
                     axonArea += child.getROI().getArea() * pixelSizeSquaredMicrons;
-                    axonObjects = childDetections.size();
+                    axonObjects = childObjects.size();
                 }
             }
 
