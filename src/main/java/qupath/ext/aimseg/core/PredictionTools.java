@@ -12,6 +12,12 @@ import ij.process.ImageStatistics;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.Files;
+import org.yaml.snakeyaml.Yaml;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import java.util.Map;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -50,6 +56,7 @@ import java.awt.image.BufferedImage;
  * and PyTorch has been downloaded – see <a href="https://qupath.readthedocs.io/en/stable/docs/deep/djl.html">the QuPath docs</a>.
  */
 public class PredictionTools {
+    private static final Logger logger = LoggerFactory.getLogger(PredictionTools.class);
 
     private PredictionTools() {
         throw new UnsupportedOperationException("Do not instantiate this class");
@@ -59,27 +66,36 @@ public class PredictionTools {
      * Function to calculate the downsample factor based on target pixel size
      */
     static double calculateDownsampleFactor(ImageData<BufferedImage> imageData, double targetPixelSizeMicrons, boolean allowUpscaling) {
-        // Get the current pixel size from image metadata
-        double pixelSizeMicrons = imageData.getServer().getPixelCalibration().getAveragedPixelSizeMicrons(); // maybe getPixelHeight() and getPixelWidth()
-
-        // Calculate the downsample factor
+        double pixelSizeMicrons = imageData.getServer().getPixelCalibration().getAveragedPixelSizeMicrons();
         double downsampleFactor = targetPixelSizeMicrons / pixelSizeMicrons;
 
-        // Handle upscaling based on the user's preference
         if (!allowUpscaling && downsampleFactor < 1) {
-            throw new IllegalArgumentException("Target pixel size is smaller than the current pixel size. Upscaling is disabled.");
-        }
-
-        // Ensure the downsample factor is at least 1 if upscaling is not allowed
-        if (!allowUpscaling) {
-            downsampleFactor = Math.max(downsampleFactor, 1);
+            logger.warn("Target pixel size ({} µm) is smaller than the image pixel size ({} µm). Downsample will not be applied (factor set to 1).", targetPixelSizeMicrons, pixelSizeMicrons);
+            return 1;
         }
 
         return Math.round(downsampleFactor);
     }
 
     /**
-     * This function runs an AimSeg model using DJL in QuPath
+     * Method to extract parameters from rdf.yaml file
+     */
+    static Map<String, Object> extractParametersFromYaml(Path yamlPath) throws IOException {
+        Yaml yaml = new Yaml();
+        try (var inputStream = Files.newInputStream(yamlPath)) {
+            Map<String, Object> yamlData = yaml.load(inputStream);
+            Map<String, Object> config = (Map<String, Object>) yamlData.get("config");
+            return Map.of(
+                "pixel_size", config.get("pixel_size"),
+                "min_diameter", config.get("min_diameter"),
+                "predict_inner_tongue", config.get("predict_inner_tongue")
+            );
+        }
+    }
+
+
+    /**
+     * Method to run an AimSeg model using DJL in QuPath
      */
     static ImagePlus modelInference(URI uri, String layout, int inputWidth, int inputHeight, Padding padding, int[] inputShape,
                                     ImageData<BufferedImage> imageData, ImageServer<BufferedImage> server, RegionRequest request) throws IOException {
@@ -145,12 +161,17 @@ public class PredictionTools {
     static Collection<PathObject> processSDT(ImagePlus imp,
                                              PathObjectHierarchy hierarchy,
                                              DataType dataType,
-                                             double targetPixelSizeMicrons, double minDiameterMicrons,
+                                             double targetPixelSizeMicrons,
+                                             double minDiameterMicrons,
                                              String className,
                                              int channel,
-                                             double minThreshold, double maxThreshold, double downsample,
-                                             ImageData<BufferedImage> imageData, RegionRequest request,
-                                             double translateX, double translateY) throws IOException {
+                                             double minThreshold,
+                                             double maxThreshold,
+                                             double downsample,
+                                             ImageData<BufferedImage> imageData,
+                                             RegionRequest request,
+                                             double translateX,
+                                             double translateY) throws IOException {
         // Create ROIs from thresholds
         imp.setC(channel); // Set the channel index (1-based)
         ImageProcessor ip = imp.getProcessor(); // Get the ImageProcessor of the specified channel
@@ -265,12 +286,23 @@ public class PredictionTools {
     public static Collection<PathObject> runAimSeg(Path modelPath,
                                                    ImageData<BufferedImage> imageData,
                                                    PathObject parentObject,
-                                                   DataType dataType) throws IOException {
-        // ensure we're not creating duplicates etc
+                                                   double minThreshold,
+                                                   double maxThreshold) throws IOException {
+        // Ensure we're not creating duplicates etc
         parentObject.getChildObjects().clear();
 
-        // temporary path, use weights_tem.pt or weights_brightfield.pt model
-        var uri = modelPath.toUri();
+        // Find the weights and YAML files
+        Path weightsPath = modelPath.resolve("weights.pt");
+        Path yamlPath = modelPath.resolve("rdf.yaml");
+
+        // Extract parameters from the YAML file
+        Map<String, Object> parameters = extractParametersFromYaml(yamlPath);
+        double targetPixelSizeMicrons = (double) parameters.get("pixel_size");
+        double minDiameterPixels = (double) parameters.get("min_diameter");
+        boolean predictInnerTongue = (boolean) parameters.get("predict_inner_tongue");
+
+       // Calculate downsample factor
+        double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, false);
 
         // Model parameters
         int inputWidth = 512;
@@ -280,19 +312,11 @@ public class PredictionTools {
         var layout = "NCHW";
         int[] inputShape = new int[] {1, nChannels, inputHeight, inputWidth};
 
-        // Image parameters
-        double targetPixelSizeMicrons = dataType == DataType.ELECTRON_MICROSCOPY ? 0.008 : 0.07;
-        double minDiameterMicrons = dataType == DataType.ELECTRON_MICROSCOPY ? 0.2 : 1.0;
-        double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, true);
-
-        // Post-processing parameters
-        double minThreshold = 0.7;
-        double maxThreshold = 1;
 
         // Get an ImageJ representation of the output
         ImagePlus impOutput;
 
-        // Use a selected annotation if we have one, otherwise request pixels for the full image
+        // Get roi selection instance
         var server = imageData.getServer();
         var roi = parentObject.getROI();
         double translateX = roi.getBoundsX();
@@ -300,29 +324,28 @@ public class PredictionTools {
         RegionRequest request = RegionRequest.createInstance(server.getPath(), downsample, roi);
 
         // Run model on the specified image region
-        impOutput = modelInference(uri, layout, inputWidth, inputHeight, padding, inputShape, imageData, server, request);
+        impOutput = modelInference(weightsPath.toUri(), layout, inputWidth, inputHeight, padding, inputShape, imageData, server, request);
 
         // Instance segmentation on model prediction
-        var fibres = processSDT(impOutput, imageData.getHierarchy(), dataType, targetPixelSizeMicrons, minDiameterMicrons,
+        var fibres = processSDT(impOutput, imageData.getHierarchy(), DataType.ELECTRON_MICROSCOPY, targetPixelSizeMicrons, minDiameterPixels,
                 "Fibre", 2, minThreshold, maxThreshold, downsample, imageData, request, translateX, translateY);
-//        imageData.getHierarchy().addObjects(fibres);
-        var axons = processSDT(impOutput, imageData.getHierarchy(), dataType, targetPixelSizeMicrons, minDiameterMicrons,
+        var axons = processSDT(impOutput, imageData.getHierarchy(), DataType.ELECTRON_MICROSCOPY, targetPixelSizeMicrons, minDiameterPixels,
                 "Axon", 3, minThreshold, maxThreshold, downsample, imageData, request, translateX, translateY);
-//        imageData.getHierarchy().addObjects(axons);
         Collection<PathObject> tongues = List.of();
-        if (dataType == DataType.ELECTRON_MICROSCOPY) {
+        
+        if (predictInnerTongue) {
             tongues = processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, translateX, translateY);
-//            imageData.getHierarchy().addObjects(tongues);
         }
 
-        HierarchyTools.updateHierarchy(imageData.getHierarchy(), parentObject, fibres, axons, tongues, dataType);
+        HierarchyTools.updateHierarchy(imageData.getHierarchy(), parentObject, fibres, axons, tongues, DataType.ELECTRON_MICROSCOPY);
 
-        // lock selected annotation
+        // Lock selected annotation
         if (!parentObject.isLocked()) {
             parentObject.setLocked(true);
         }
+        
         return Stream.of(fibres.stream(), axons.stream(), tongues.stream())
-                .flatMap(s -> s) // flattening multiple collections into one
+                .flatMap(s -> s) // Flattening multiple collections into one
                 .collect(Collectors.toSet());
     }
 

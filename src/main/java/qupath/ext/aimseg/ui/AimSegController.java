@@ -53,7 +53,6 @@ public class AimSegController extends BorderPane {
      * Fields in this class tagged with <code>@FXML</code> correspond to UI elements, and methods tagged with <code>@FXML</code> are methods triggered by actions on the UI (e.g., mouse clicks).
      * <p>
      * We consider the use of FXML to be "best practice" for UI creation, as it separates logic from layout and enables easier use of CSS. However, it is not mandatory, and you could instead define the layout of the UI using code.
-     * @throws IOException If the FXML can't be read successfully.
      */
     private AimSegController() throws IOException {
         var url = AimSegController.class.getResource("aimseg.fxml");
@@ -72,23 +71,27 @@ public class AimSegController extends BorderPane {
             Dialogs.showErrorMessage(
                     "AimSeg extension",
                     """
-                            Model not set - point me to the directory containing a models, then select one.
+                            Model not set - point me to the directory containing a model, then select one.
                             """
             );
             return;
         }
         if (!Files.exists(modelPath)) {
             Dialogs.showErrorMessage("AimSeg extension", "Model not found!");
+            return;
         }
-        // todo: remove this eventually
+
+        // Check if a parent object is selected
         if (QP.getSelectedObject() == null) {
-            QP.createFullImageAnnotation(true);
+            throw new IllegalArgumentException("A parent object is required to run the AimSeg model.");
         }
-        var pathObjects = PredictionTools.runAimSeg(modelPath, QP.getCurrentImageData(), QP.getSelectedObject(), getDataType());
+
+        var pathObjects = PredictionTools.runAimSeg(modelPath, QP.getCurrentImageData(), QP.getSelectedObject(), 0.5, 1);
         logger.info("{} objects created by AimSeg", pathObjects.size());
     }
 
     private PredictionTools.DataType getDataType() {
+        // TODO: This method is no longer needed, review were it's still used
         return bfCheckBox.isSelected() ? PredictionTools.DataType.BRIGHTFIELD : PredictionTools.DataType.ELECTRON_MICROSCOPY;
     }
 
@@ -118,7 +121,12 @@ public class AimSegController extends BorderPane {
         }
         modelChoiceBox.getItems().clear();
         try (var pathStream = Files.list(path)) {
-            modelChoiceBox.getItems().addAll(pathStream.filter(p -> p.toString().endsWith(".pt")).toList());
+            modelChoiceBox.getItems().addAll(
+                pathStream
+                    .filter(Files::isDirectory)
+                    .filter(p -> Files.exists(p.resolve("weights.pt")) && Files.exists(p.resolve("rdf.yaml")))
+                    .toList()
+            );
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
