@@ -32,6 +32,7 @@ import qupath.lib.images.ImageData;
 import qupath.lib.images.servers.ImageServer;
 import qupath.lib.images.servers.LabeledImageServer;
 import qupath.lib.images.servers.PixelType;
+import qupath.lib.images.servers.TransformedServerBuilder;
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.PathObjects;
 import qupath.lib.objects.classes.PathClass;
@@ -113,17 +114,32 @@ public class PredictionTools {
     static ImagePlus modelInference(URI modelUri, String layout, int inputWidth, int inputHeight,
                                     Padding padding, int[] inputShape,
                                     ImageData<BufferedImage> imageData, ImageServer<BufferedImage> server,
-                                    RegionRequest request) throws IOException {
-        // Normalise the input image to [0, 1]
-        ImagePlus imp = IJTools.convertToImagePlus(server, request).getImage();
-        ImageStatistics stats = imp.getStatistics();
-        double min = stats.min;
-        double max = stats.max;
+                                    RegionRequest request, int channel) throws IOException {
+        // Compute min/max stats from the correct channel using QuPath's raster directly
+        double min, max;
+        try {
+            var channelPixels = server.readRegion(request);
+            var raster = channelPixels.getRaster();
+            int channelIdx = channel - 1;
+            double[] pixels = raster.getSamples(0, 0, raster.getWidth(), raster.getHeight(), channelIdx, (double[]) null);
+            min = Double.MAX_VALUE;
+            max = -Double.MAX_VALUE;
+            for (double p : pixels) {
+                if (p < min) min = p;
+                if (p > max) max = p;
+            }
+            logger.info("Channel {} stats: min={}, max={}", channel, min, max);
+        } catch (Exception e) {
+            logger.warn("Could not compute channel stats, using defaults 0-1", e);
+            min = 0;
+            max = 1;
+        }
 
         ImagePlus prediction;
         try (var dnn = DjlTools.createDnnModel(modelUri, layout, inputShape)) {
             var op = ImageOps.buildImageDataOp()
                     .appendOps(
+                            ImageOps.Channels.extract(channel - 1),
                             ImageOps.Core.ensureType(PixelType.FLOAT32),
                             ImageOps.Core.subtract(min),
                             ImageOps.Core.divide(max - min),
@@ -188,7 +204,12 @@ public class PredictionTools {
         ImageProcessor sdtChannel = prediction.getProcessor().duplicate();
         sdtChannel.setThreshold(minThreshold, maxThreshold, ImageProcessor.NO_LUT_UPDATE);
 
-        var seedROIs = RoiTools.splitROI(SimpleThresholding.thresholdToROI(sdtChannel, request));
+        var thresholdedROI = SimpleThresholding.thresholdToROI(sdtChannel, request);
+        if (thresholdedROI == null) {
+            logger.warn("processSDT ({}): no regions found above threshold", className);
+            return java.util.Collections.emptySet();
+        }
+        var seedROIs = RoiTools.splitROI(thresholdedROI);
         var seedObjects = seedROIs.stream()
                 .map(roi -> PathObjects.createAnnotationObject(roi, PathClass.getInstance("Seed")))
                 .toList();
@@ -298,10 +319,11 @@ public class PredictionTools {
      * @return all objects created by the pipeline (fibres, axons, and optionally inner tongues)
      */
     public static Collection<PathObject> runAimSeg(Path modelPath,
-                                                   ImageData<BufferedImage> imageData,
-                                                   PathObject parentObject,
-                                                   double minThreshold,
-                                                   double maxThreshold) throws IOException {
+                                                ImageData<BufferedImage> imageData,
+                                                PathObject parentObject,
+                                                double minThreshold,
+                                                double maxThreshold,
+                                                int channel) throws IOException {
         parentObject.getChildObjects().clear();
 
         // Load model parameters from rdf.yaml
@@ -316,7 +338,7 @@ public class PredictionTools {
         double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, false);
         logger.info("Downsample factor: {}", downsample);
 
-        // Define the region to process based on the parent annotation
+        // Define the region to process based on the parent annotation and selected channel
         var server = imageData.getServer();
         var parentROI = parentObject.getROI();
         double translateX = parentROI.getBoundsX();
@@ -332,7 +354,7 @@ public class PredictionTools {
         ImagePlus prediction = modelInference(
                 modelPath.resolve("weights.pt").toUri(),
                 "NCHW", 512, 512, Padding.symmetric(32), inputShape,
-                imageData, server, request);
+                imageData, server, request, channel);
 
         // Post-process prediction channels into QuPath objects
         var fibres = processSDT(prediction, imageData.getHierarchy(), "Fibre", 2,

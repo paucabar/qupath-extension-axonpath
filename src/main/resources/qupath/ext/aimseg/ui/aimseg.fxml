@@ -9,7 +9,6 @@
 <?import javafx.scene.control.TitledPane?>
 <?import javafx.scene.control.ToggleButton?>
 <?import javafx.scene.control.Tooltip?>
-<?import javafx.scene.layout.AnchorPane?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.Pane?>
@@ -17,146 +16,117 @@
 <?import javafx.scene.text.Text?>
 <?import org.controlsfx.control.SearchableComboBox?>
 <?import org.controlsfx.control.SegmentedButton?>
-<?import javafx.scene.control.CheckBox?>
 <fx:root maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefWidth="330" stylesheets="@aimseg.css" type="BorderPane" xmlns="http://javafx.com/javafx/22" xmlns:fx="http://javafx.com/fxml/1">
     <center>
         <VBox>
-            <TitledPane fx:id="pane1" animated="false" collapsible="false" prefHeight="262.0" prefWidth="330.0" styleClass="uncollapsible-titled-pane" text="%ui.processing.pane" VBox.vgrow="NEVER">
-                <VBox alignment="TOP_CENTER" styleClass="standard-spacing ">
+            <TitledPane fx:id="pane1" animated="false" collapsible="false" prefWidth="330.0" styleClass="uncollapsible-titled-pane" text="%ui.processing.pane" VBox.vgrow="NEVER">
+                <VBox alignment="TOP_CENTER" styleClass="standard-spacing">
                     <children>
-                        <!-- Models -->
+
+                        <!-- Model selection -->
                         <Label styleClass="regular" text="%ui.model" />
-                        <HBox alignment="CENTER">
-                            <children>
-                                <SearchableComboBox fx:id="modelChoiceBox" prefWidth="344.0">
-                                    <tooltip><Tooltip text="%ui.model.tooltip" /></tooltip>
-                                </SearchableComboBox>
-                                <Button fx:id="downloadButton" disable="true" mnemonicParsing="false">
-                                    <tooltip>
-                                        <Tooltip text="%ui.model.download.tooltip" />
-                                    </tooltip>
-                                    <graphic>
-                                        <Text styleClass="fa-icon" text=""></Text>
-                                    </graphic>
-                                </Button>
-                                <Button fx:id="infoButton" disable="true">
-                                    <tooltip>
-                                        <Tooltip text="%ui.model.info.tooltip" />
-                                    </tooltip>
-                                    <graphic>
-                                        <Text styleClass="fa-icon" text="" />
-                                    </graphic>
-                                </Button>
-                            </children>
-                            <styleClass>
-                                <String fx:value="standard-spacing" />
-                                <String fx:value="standard-padding" />
-                            </styleClass>
+                        <HBox alignment="CENTER" styleClass="standard-spacing standard-padding">
+                            <SearchableComboBox fx:id="modelChoiceBox" prefWidth="344.0" HBox.hgrow="ALWAYS">
+                                <tooltip><Tooltip text="%ui.model.tooltip" /></tooltip>
+                            </SearchableComboBox>
+                            <Button fx:id="infoButton" onAction="#showModelDirInfo">
+                                <tooltip>
+                                    <Tooltip text="%ui.model.info.tooltip" />
+                                </tooltip>
+                                <graphic>
+                                    <Text styleClass="fa-icon" text="&#xf129;" />
+                                </graphic>
+                            </Button>
                         </HBox>
-                        <HBox>
-                            <Label text="Brightfield model"/>
-                            <CheckBox fx:id="bfCheckBox"/>
-                            <styleClass>
-                                <String fx:value="standard-spacing" />
-                                <String fx:value="standard-padding" />
-                            </styleClass>
+
+                        <!-- Model directory -->
+                        <HBox styleClass="standard-spacing standard-padding">
+                            <Label fx:id="labelModelsLocation" alignment="CENTER" maxHeight="1.7976931348623157E308" minWidth="-Infinity" styleClass="standard-message" text="%ui.options.directory-name" HBox.hgrow="NEVER" />
+                            <Label fx:id="modelDirLabel" alignment="CENTER" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" text="%ui.options.directory-not-set" textOverrun="LEADING_ELLIPSIS" HBox.hgrow="SOMETIMES">
+                                <styleClass>
+                                    <String fx:value="warning-message" />
+                                    <String fx:value="standard-message" />
+                                </styleClass>
+                                <tooltip>
+                                    <Tooltip fx:id="tooltipModelDir" text="%ui.options.directory.tooltip" />
+                                </tooltip>
+                            </Label>
+                        <Button fx:id="modelDirButton" mnemonicParsing="false" onAction="#chooseModel" styleClass="standard-message">
+                            <tooltip>
+                                <Tooltip text="%ui.options.directory-not-set.tooltip" />
+                            </tooltip>
+                            <graphic>
+                                <Text styleClass="fa-icon" text="&#xf07b;" />
+                            </graphic>
+                        </Button>
                         </HBox>
-                        <HBox prefHeight="100.0" prefWidth="200.0">
-                            <children>
-                                <Label fx:id="labelModelsLocation" alignment="CENTER" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" minWidth="-Infinity" style="-fx-font-style: normal;" styleClass="standard-message" text="%ui.options.directory-name" HBox.hgrow="NEVER" />
-                                <Label fx:id="modelDirLabel" alignment="CENTER" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" text="%ui.options.directory-not-set" textOverrun="LEADING_ELLIPSIS" HBox.hgrow="SOMETIMES">
-                                    <styleClass>
-                                        <String fx:value="warning-message" />
-                                        <String fx:value="standard-message" />
-                                    </styleClass>
-                                    <tooltip>
-                                        <Tooltip fx:id="tooltipModelDir" text="%ui.options.directory.tooltip" />
-                                    </tooltip>
-                                </Label>
-                                <Button fx:id="modelDirButton" mnemonicParsing="false" onAction="#chooseModel" styleClass="standard-message">
-                                    <tooltip>
-                                        <Tooltip text="%ui.options.directory-not-set.tooltip" />
-                                    </tooltip>
-                                    <graphic>
-                                        <Text styleClass="fa-icon" text="" />
-                                    </graphic>
-                                </Button>
-                            </children>
-                            <styleClass>
-                                <String fx:value="standard-spacing" />
-                                <String fx:value="standard-padding" />
-                            </styleClass>
+
+                        <!-- Channel selection -->
+                        <HBox alignment="CENTER_LEFT" styleClass="standard-spacing standard-padding">
+                            <Label styleClass="regular" text="%ui.options.channel" />
+                            <Pane minWidth="5" HBox.hgrow="ALWAYS" />
+                            <ChoiceBox fx:id="channelChoiceBox" prefWidth="200.0">
+                                <tooltip><Tooltip text="%ui.options.channel.tooltip" /></tooltip>
+                            </ChoiceBox>
                         </HBox>
 
                         <Separator prefWidth="200.0" />
 
-                        <!-- Selections -->
+                        <!-- Object selection -->
                         <VBox alignment="CENTER" styleClass="standard-spacing">
-                           <children>
-                               <Label styleClass="regular" text="%ui.selection.label" />
-                               <Label alignment="CENTER" styleClass="aimseg-sub-title" text="%ui.selection.alt" textAlignment="CENTER" />
-                               <HBox alignment="CENTER" styleClass="standard-spacing">
-                                   <Label styleClass="regular" text="%ui.selection.sub-label" />
-                                   <SegmentedButton fx:id="segButton" maxWidth="500">
-                                       <buttons>
-                                           <ToggleButton fx:id="toggleSelectAllAnnotations" onAction="#selectAllAnnotations" text="%ui.selection.all-annotations">
-                                               <tooltip><Tooltip text="%ui.selection.all-annotations.tooltip" /></tooltip>
-                                           </ToggleButton>
-                                           <ToggleButton fx:id="toggleSelectAllDetections" onAction="#selectAllDetections" text="%ui.selection.all-detections">
-                                               <tooltip><Tooltip text="%ui.selection.all-detections.tooltip" /></tooltip>
-                                           </ToggleButton>
-                                       </buttons>
-                                   </SegmentedButton>
-                               </HBox>
-                           </children>
+                            <children>
+                                <Label styleClass="regular" text="%ui.selection.label" />
+                                <Label alignment="CENTER" styleClass="aimseg-sub-title" text="%ui.selection.alt" textAlignment="CENTER" />
+                                <HBox alignment="CENTER" styleClass="standard-spacing">
+                                    <Label styleClass="regular" text="%ui.selection.sub-label" />
+                                    <SegmentedButton fx:id="segButton" maxWidth="500">
+                                        <buttons>
+                                            <ToggleButton fx:id="toggleSelectAllAnnotations" onAction="#selectAllAnnotations" text="%ui.selection.all-annotations">
+                                                <tooltip><Tooltip text="%ui.selection.all-annotations.tooltip" /></tooltip>
+                                            </ToggleButton>
+                                            <ToggleButton fx:id="toggleSelectAllDetections" onAction="#selectAllDetections" text="%ui.selection.all-detections">
+                                                <tooltip><Tooltip text="%ui.selection.all-detections.tooltip" /></tooltip>
+                                            </ToggleButton>
+                                        </buttons>
+                                    </SegmentedButton>
+                                </HBox>
+                            </children>
                         </VBox>
+
                         <Separator prefWidth="200.0" />
 
                         <!-- Run -->
                         <VBox alignment="CENTER" styleClass="standard-spacing standard-padding">
-                            <VBox alignment="CENTER">
-                                <HBox alignment="CENTER" styleClass="standard-spacing">
-                                    <children>
-                                        <Button fx:id="runButton" prefWidth="252.0" text="%ui.run" onAction="#runAimSeg">
-                                            <tooltip><Tooltip text="%ui.run.tooltip" /></tooltip>
-                                        </Button>
-                                    </children>
-                                </HBox>
-                                <Label id="labelWarning" fx:id="labelMessage" styleClass="error-message" text="%ui.error.no-selection" VBox.vgrow="ALWAYS" />
-                            </VBox>
+                            <HBox alignment="CENTER" styleClass="standard-spacing">
+                                <Button fx:id="runButton" prefWidth="252.0" text="%ui.run" onAction="#runAimSeg">
+                                    <tooltip><Tooltip text="%ui.run.tooltip" /></tooltip>
+                                </Button>
+                            </HBox>
+                            <Label fx:id="labelMessage" styleClass="error-message" text="%ui.error.no-selection" VBox.vgrow="ALWAYS" />
                         </VBox>
+
                     </children>
                 </VBox>
             </TitledPane>
 
-            <!--    Hardware Pane-->
+            <!-- Additional Options -->
             <TitledPane animated="false" maxHeight="Infinity" text="%ui.options.pane" VBox.vgrow="NEVER">
                 <VBox alignment="TOP_CENTER" spacing="7.5" styleClass="standard-padding">
-                    <!-- Device Selection -->
                     <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
                         <padding>
                             <Insets left="10" right="10" top="10" />
                         </padding>
-                        <children>
-                            <Label styleClass="regular" text="%ui.options.device">
-                                <tooltip>
-                                    <Tooltip text="%ui.options.device.tooltip" />
-                                </tooltip>
-                            </Label>
-                            <Pane minWidth="5" HBox.hgrow="ALWAYS" />
-                            <ChoiceBox fx:id="deviceChoiceBox" prefWidth="75.0">
-                                <tooltip><Tooltip text="%ui.options.device.tooltip" /></tooltip>
-                            </ChoiceBox>
-                        </children>
-                    </HBox>
-                    <!-- Thread Selection-->
-                    <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
-                        <padding>
-                            <Insets left="10" right="10" />
-                        </padding>
+                        <Label styleClass="regular" text="%ui.options.device">
+                            <tooltip><Tooltip text="%ui.options.device.tooltip" /></tooltip>
+                        </Label>
+                        <Pane minWidth="5" HBox.hgrow="ALWAYS" />
+                        <ChoiceBox fx:id="deviceChoiceBox" prefWidth="75.0">
+                            <tooltip><Tooltip text="%ui.options.device.tooltip" /></tooltip>
+                        </ChoiceBox>
                     </HBox>
                 </VBox>
             </TitledPane>
+
         </VBox>
     </center>
 </fx:root>
