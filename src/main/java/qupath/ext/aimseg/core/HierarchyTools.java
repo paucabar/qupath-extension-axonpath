@@ -1,12 +1,8 @@
 package qupath.ext.aimseg.core;
 
-
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 import org.locationtech.jts.geom.Geometry;
@@ -19,15 +15,8 @@ import qupath.lib.objects.hierarchy.PathObjectHierarchy;
 import qupath.lib.roi.GeometryTools;
 import qupath.lib.roi.interfaces.ROI;
 
-
 import static java.util.stream.Collectors.toCollection;
-import static qupath.ext.aimseg.core.PredictionTools.DataType.BRIGHTFIELD;
-import static qupath.ext.aimseg.core.PredictionTools.DataType.ELECTRON_MICROSCOPY;
 
-/**
- * This class provides tools to establish meaningful hierarchies, recognising that a fibre can contain multiple
- * inner tongue objects, and an inner tongue object may contain multiple axon objects.
- */
 public class HierarchyTools {
     private static final Logger logger = LoggerFactory.getLogger(HierarchyTools.class);
 
@@ -35,198 +24,113 @@ public class HierarchyTools {
         throw new UnsupportedOperationException("Do not instantiate this class");
     }
 
-    /** Compute the intersection over Object2 area (IoO2A) between two object classes and create hierarchical relationships
-     * If IoO2A == 1, Object2 is added below Object1 immediately
-     * If 0.9 < IoO2A < 1, Object2 is replaced by the intersection before being added below Object1
+    /**
+     * Assigns child objects to parents based on the intersection over child area (IoC).
+     * If IoC > 0.9999, the child is added directly.
+     * If IoC > 0.9, the child is clipped to the parent boundary before being added.
      */
-    private static void establishHierarchyBasedOnIoO2(Collection<PathObject> objectsPrimary, Collection<PathObject> objectsSecondary) {
+    private static void assignChildrenToParents(Collection<PathObject> parents, Collection<PathObject> children) {
+        for (var parent : parents) {
+            Geometry parentShape = parent.getROI().getGeometry();
 
-        for (var parentObject: objectsPrimary) {
-            Geometry parentGeometry = parentObject.getROI().getGeometry();
+            for (var child : children) {
+                Geometry childShape = child.getROI().getGeometry();
+                Geometry overlap = parentShape.intersection(childShape);
 
-            for (var secondaryObject: objectsSecondary) {
-                Geometry secondaryGeometry = secondaryObject.getROI().getGeometry();
-                double intersectionArea = parentGeometry.intersection(secondaryGeometry).getArea();
+                if (overlap.isEmpty()) continue;
 
-                if (intersectionArea > 0) {
-//                    double parentArea = parentGeometry.getArea();
-                    double secondaryArea = secondaryGeometry.getArea();
-                    double ioo2 = intersectionArea / secondaryArea;
+                double overlapRatio = overlap.getArea() / childShape.getArea();
 
-                    // Establish hierarchy directly if IoO2 == 1
-                    if (ioo2 == 1) {
-                        parentObject.addChildObject(secondaryObject);
-                    }
-                    // Replace secondary object with intersection and establish hierarchy if 0.9 < IoO2 < 1
-                    else if (ioo2 > 0.9) {
-                        Geometry intersectionGeometry = parentGeometry.intersection(secondaryGeometry);
-                        Geometry intersectionGeometry2 = GeometryTools.homogenizeGeometryCollection(intersectionGeometry);
-                        ROI intersectionROI = GeometryTools.geometryToROI(intersectionGeometry2, secondaryObject.getROI().getImagePlane());
-
-                        // Create the intersection object as an annotation with the same PathClass
-                        PathObject intersectionObject = PathObjects.createAnnotationObject(intersectionROI, secondaryObject.getPathClass());
-
-                        // Replace the secondary object with the intersection object
-                        //pathHierarchy.removeObject(secondaryObject, false) // Remove the original object
-                        parentObject.addChildObject(intersectionObject);
-                    }
+                if (overlapRatio > 0.9999) {
+                    parent.addChildObject(child);
+                } else if (overlapRatio > 0.9) {
+                    Geometry clipped = GeometryTools.homogenizeGeometryCollection(overlap);
+                    ROI clippedROI = GeometryTools.geometryToROI(clipped, child.getROI().getImagePlane());
+                    PathObject clippedChild = PathObjects.createAnnotationObject(clippedROI, child.getPathClass());
+                    parent.addChildObject(clippedChild);
                 }
             }
         }
     }
-
 
     /**
-     * This function processes Fibre objects in QuPath by verifying and filtering their hierarchical relationships.
-     * Depending on the data type ("EM" or "BF"), it enforces specific hierarchical relationships:
-     * <p>
-     * - For "EM": Fibre > Inner Tongue > Axon (at least one Inner Tongue and one Axon descendant required).
-     * - For "BF": Fibre > Axon (at least one Axon required; Inner Tongue is ignored).
-     * <p>
-     * Invalid Fibre objects (those not meeting the hierarchy criteria) are removed from the hierarchy,
-     * along with their associated child objects.
-     *
-     * @param dataType A string ("EM" or "BF") specifying the type of data and hierarchy logic to apply.
-     * @return A collection of invalid Fibre objects that were removed.
+     * Builds the object hierarchy after AimSeg inference.
+     * If inner tongues are present, the expected structure is Fibre > Inner Tongue > Axon.
+     * Otherwise, the expected structure is Fibre > Axon.
+     * Orphaned objects and fibres missing expected children are removed.
      */
-    static Collection<PathObject> findChildless(PathObjectHierarchy hierarchy, PredictionTools.DataType dataType) {
-        // Get all Fibre objects
-        Collection<PathObject> fibreObjects = hierarchy.getAnnotationObjects().stream()
-                .filter(po -> po.getPathClass() == PathClass.getInstance("Fibre"))
-                .toList();
+    static void updateHierarchy(PathObjectHierarchy hierarchy,
+                                PathObject rootObject,
+                                Collection<PathObject> fibres,
+                                Collection<PathObject> axons,
+                                Collection<PathObject> innerTongues) {
 
-        // Create a map to store Fibre objects and their valid child objects
-        Map<PathObject, Collection<PathObject>> validFibreToChildrenMap = new HashMap<>();
+        boolean withInnerTongues = !innerTongues.isEmpty();
 
-        // Iterate through each Fibre object
-        for (var fibre: fibreObjects) {
-            if (dataType == ELECTRON_MICROSCOPY) {
-                // For EM: Fibre > Inner Tongue > Axon hierarchy
-                Collection<PathObject> firstLevelChildren = fibre.getChildObjects().stream()
-                        .filter(it -> it.getPathClass() == PathClass.getInstance("Inner Tongue"))
-                        .collect(toCollection(ArrayList::new)); // toList makes an immutable list by default, and we need mutable to be able to add second level children
-                Collection<PathObject> secondLevelChildren = firstLevelChildren.stream()
-                        .flatMap(pathObject -> pathObject.getChildObjects().stream()) // flatmap lets us merge lists of children into one list
-                        .filter(it -> it.getPathClass() == PathClass.getInstance("Axon"))
-                        .toList();
-                // Check if the Fibre object has at least one Inner Tongue and one Axon
-                if (!firstLevelChildren.isEmpty() && !secondLevelChildren.isEmpty()) {
-                    firstLevelChildren.addAll(secondLevelChildren);
-                    validFibreToChildrenMap.put(fibre, firstLevelChildren);
-                }
-            } else if (dataType == BRIGHTFIELD) {
-                // For BF: Fibre > Axon hierarchy
-                Collection<PathObject> firstLevelChildren = fibre.getChildObjects().stream()
-                        .filter(it -> it.getPathClass() == PathClass.getInstance("Axon"))
-                        .toList();
-                // Check if the Fibre object has at least one Axon
-                if (!firstLevelChildren.isEmpty()) {
-                    validFibreToChildrenMap.put(fibre, firstLevelChildren);
-                }
-            }
+        if (withInnerTongues) {
+            logger.info("Assigning {} inner tongues to {} fibres", innerTongues.size(), fibres.size());
+            assignChildrenToParents(fibres, innerTongues);
+
+            Collection<PathObject> assignedInnerTongues = fibres.stream()
+                    .flatMap(f -> f.getChildObjects().stream())
+                    .filter(it -> it.getPathClass() == PathClass.getInstance("Inner Tongue"))
+                    .toList();
+
+            logger.info("Assigning {} axons to {} inner tongues", axons.size(), assignedInnerTongues.size());
+            assignChildrenToParents(assignedInnerTongues, axons);
+
+            Collection<PathObject> orphans = Stream.concat(
+                    innerTongues.stream().filter(it -> it.getLevel() == 0),
+                    axons.stream().filter(it -> it.getLevel() == 0)
+            ).toList();
+            logger.info("Removing {} orphaned objects", orphans.size());
+            hierarchy.removeObjects(orphans, false);
+
+        } else {
+            logger.info("Assigning {} axons to {} fibres", axons.size(), fibres.size());
+            assignChildrenToParents(fibres, axons);
+
+            Collection<PathObject> orphanedAxons = axons.stream()
+                    .filter(it -> it.getLevel() == 0)
+                    .toList();
+            logger.info("Removing {} orphaned axons", orphanedAxons.size());
+            hierarchy.removeObjects(orphanedAxons, false);
         }
 
-        // Output the results for debugging or further processing
-        if (logger.isDebugEnabled()) {
-            logger.debug("Valid Fibre objects and their children:");
-            for (var es: validFibreToChildrenMap.entrySet()) {
-                var fibre = es.getKey();
-                var children = es.getValue();
-                logger.debug("Fibre: {} has {} valid child objects {}", fibre.getID(), children.size(), children);
-            }
-        }
+        Collection<PathObject> incompleteFibres = findIncompleteFibres(fibres, withInnerTongues);
+        logger.info("Removing {} incomplete fibres", incompleteFibres.size());
 
-        // Remove invalid Fibre objects and their children
-        Set<PathObject> invalidFibreObjects = new HashSet<>(fibreObjects);
-        invalidFibreObjects.removeAll(validFibreToChildrenMap.keySet());
-
-        return invalidFibreObjects;
-    }
-
-
-    /**
-     * Identify all the objects with no parent object
-     */
-    static Collection<PathObject> findParentless(Collection<PathObject> objects) {
-        logger.info("Checking {} objects", objects.size());
-        var parentless = objects.stream().filter(it -> it.getLevel() == 0).toList();
-        logger.info("Found {} parentless objects", parentless.size());
-        return parentless;
-    }
-
-    static void updateHierarchy(PathObject rootObject, PredictionTools.DataType dataType, PathObjectHierarchy hierarchy) {
-        Collection<PathObject> fibreObjects = rootObject.getChildObjects().stream()
-                .filter(PathObject::isAnnotation)
-                .filter(it -> (it.getPathClass() == PathClass.getInstance("Fibre")))
+        Collection<PathObject> validFibres = fibres.stream()
+                .filter(f -> !incompleteFibres.contains(f))
                 .collect(toCollection(ArrayList::new));
-        Collection<PathObject> axonObjects = rootObject.getChildObjects().stream()
-                .filter(PathObject::isAnnotation)
-                .filter(it -> (it.getPathClass() == PathClass.getInstance("Axon")))
-                .toList();
-        Collection<PathObject> innerTongueObjects = List.of();
-        if (dataType == ELECTRON_MICROSCOPY) {
-            innerTongueObjects = rootObject.getChildObjects().stream()
-                    .filter(PathObject::isAnnotation)
-                    .filter(it -> it.getPathClass() == PathClass.getInstance("Inner Tongue"))
-                    .toList();
-        }
-        updateHierarchy(hierarchy, rootObject, fibreObjects, axonObjects, innerTongueObjects, dataType);
+        rootObject.addChildObjects(validFibres);
     }
-
 
     /**
-     * Pipeline to update hierarchy.
-     * Identifies inner tongues objects that are children of fibres, and axons that are children of inner tongues, using IoO2.
-     * Then removes invalid objects with no parents or children.
-     * @param fibreObjects a <b>mutable</b> list of fibre objects
+     * Returns fibres that are missing their expected children.
+     * With inner tongues: a valid fibre needs at least one inner tongue containing at least one axon.
+     * Without inner tongues: a valid fibre needs at least one axon.
      */
-    static void updateHierarchy(
-            PathObjectHierarchy hierarchy,
-            PathObject rootObject,
-            Collection<PathObject> fibreObjects,
-            Collection<PathObject> axonObjects,
-            Collection<PathObject> innerTongueObjects,
-            PredictionTools.DataType dataType) {
+    private static Collection<PathObject> findIncompleteFibres(Collection<PathObject> fibres, boolean withInnerTongues) {
+        Set<PathObject> incomplete = new HashSet<>();
 
-        if (dataType == ELECTRON_MICROSCOPY) {
-            logger.info("Comparing {} fibre objects to {} inner tongue objects", fibreObjects.size(), innerTongueObjects.size());
-            establishHierarchyBasedOnIoO2(fibreObjects, innerTongueObjects);
-            innerTongueObjects = fibreObjects.stream()
-                    .flatMap(po -> po.getChildObjects().stream()) // this basically merges all the lists of children
-                    .filter(it -> it.getPathClass() == PathClass.getInstance("Inner Tongue"))
-                    .toList();
-            logger.info("Comparing {} inner tongue objects to {} axon objects", innerTongueObjects.size(), axonObjects.size());
-            establishHierarchyBasedOnIoO2(innerTongueObjects, axonObjects);
-            // Remove objects with an invalid hierarchy
-            axonObjects = innerTongueObjects.stream()
-                    .flatMap(po -> po.getChildObjects().stream()) // this basically merges all the lists of children
-                    .filter(it -> (it.getPathClass() == PathClass.getInstance("Axon")))
-                    .toList();
-            Collection<PathObject> combinedObjects = Stream.concat(axonObjects.stream(), innerTongueObjects.stream()).toList();
-            // todo: I think this is not necessary if we only add valid objects in the first place
-            // Storing invalid objects, could be useful for semi-automated annotation
-            Collection<PathObject> invalidParentlessObjects = findParentless(combinedObjects);
-            hierarchy.removeObjects(invalidParentlessObjects, false);
-        } else if (dataType == BRIGHTFIELD) {
-            logger.info("Comparing {} fibre objects to {} axon objects", fibreObjects.size(), axonObjects.size());
-            establishHierarchyBasedOnIoO2(fibreObjects, axonObjects);
-
-            // todo: I think this is not necessary if we only add valid objects in the first place
-            // Remove objects with an invalid hierarchy
-            Collection<PathObject> invalidParentlessObjects = findParentless(axonObjects); // Storing invalid objects, could be useful for semi-automated annotation
-            hierarchy.removeObjects(invalidParentlessObjects, false); // todo
+        for (var fibre : fibres) {
+            if (withInnerTongues) {
+                boolean hasPopulatedInnerTongue = fibre.getChildObjects().stream()
+                        .filter(it -> it.getPathClass() == PathClass.getInstance("Inner Tongue"))
+                        .anyMatch(it -> !it.getChildObjects().isEmpty());
+                if (!hasPopulatedInnerTongue) {
+                    incomplete.add(fibre);
+                }
+            } else {
+                boolean hasAxon = fibre.getChildObjects().stream()
+                        .anyMatch(it -> it.getPathClass() == PathClass.getInstance("Axon"));
+                if (!hasAxon) {
+                    incomplete.add(fibre);
+                }
+            }
         }
-        // Remove objects invalid for quantification
-        Collection<PathObject> invalidFibreObjects = findChildless(hierarchy, dataType); // Storing invalid objects, could be useful for semi-automated annotation
-        logger.info("Removing {} invalid Fibre objects...", invalidFibreObjects.size());
-        fibreObjects.forEach(fo ->
-                logger.info("{} child objects", fo.getChildObjects().size())
-        );
-        fibreObjects.removeAll(invalidFibreObjects);
-        rootObject.addChildObjects(fibreObjects);
-//        hierarchy.addObjects(fibreObjects);
-//        hierarchy.removeObjects(invalidFibreObjects, false);
 
+        return incomplete;
     }
-
 }
