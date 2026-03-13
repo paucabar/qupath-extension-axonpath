@@ -73,23 +73,30 @@ public class AimSegController extends BorderPane {
             Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.model-not-downloaded"));
             return;
         }
-        var parentObject = QP.getSelectedObject();
-        if (parentObject == null) {
-            Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-selection"));
-            return;
-        }
         if (QP.getCurrentImageData() == null) {
             Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-image"));
             return;
         }
+        var selectedObjects = QP.getSelectedObjects();
+        if (selectedObjects == null || selectedObjects.isEmpty()) {
+            Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-selection"));
+            return;
+        }
 
-        var pathObjects = PredictionTools.runAimSeg(
-                modelPath, QP.getCurrentImageData(), parentObject, 0.5, 1,
-                getSelectedChannel());
-        logger.info("{} objects created by AimSeg", pathObjects.size());
+        int totalObjects = 0;
+        for (var parentObject : selectedObjects) {
+            var pathObjects = PredictionTools.runAimSeg(
+                    modelPath, QP.getCurrentImageData(), parentObject, 0.5, 1,
+                    getSelectedChannel());
+            totalObjects += pathObjects.size();
+        }
+        logger.info("{} total objects created by AimSeg", totalObjects);
 
-        if (parentObject.getChildObjects().stream()
-                .noneMatch(it -> it.getPathClass() == PathClass.getInstance("Fibre"))) {
+        var allFibres = selectedObjects.stream()
+                .flatMap(p -> p.getChildObjects().stream())
+                .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
+                .toList();
+        if (allFibres.isEmpty()) {
             Dialogs.showWarningNotification("AimSeg extension", resources.getString("ui.error.no-valid-fibres"));
         }
     }
