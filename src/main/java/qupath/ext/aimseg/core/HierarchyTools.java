@@ -59,7 +59,7 @@ public class HierarchyTools {
      * Otherwise, the expected structure is Fibre > Axon.
      * Orphaned objects and fibres missing expected children are removed.
      */
-    static void updateHierarchy(PathObjectHierarchy hierarchy,
+    public static void updateHierarchy(PathObjectHierarchy hierarchy,
                                 PathObject rootObject,
                                 Collection<PathObject> fibres,
                                 Collection<PathObject> axons,

@@ -151,7 +151,7 @@ public class AimSegExtension implements QuPathExtension, GitHubProject {
 	 */
 	private void addMenuItem(QuPathGUI qupath) {
 		var menu = qupath.getMenu("Extensions", false);
-		MenuItem menuItem = new MenuItem("AimSeg extension");
+		MenuItem menuItem = new MenuItem("AimSeg");
 		menuItem.setOnAction(e -> createStage());
 		menuItem.disableProperty().bind(enableExtensionProperty.not());
 		menu.getItems().add(menuItem);
@@ -168,7 +168,7 @@ public class AimSegExtension implements QuPathExtension, GitHubProject {
 				Scene scene = new Scene(new BorderPane(pane));
 				pane.heightProperty().addListener((v, o, n) -> handleStageHeightChange());
 				stage.initOwner(QuPathGUI.getInstance().getStage());
-				stage.setTitle("AimSeg extension");
+				stage.setTitle("AimSeg");
 				stage.setScene(scene);
 				stage.setResizable(false);
 			} catch (IOException e) {
