@@ -3,9 +3,11 @@
 <?import java.lang.String?>
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
+<?import javafx.scene.control.CheckBox?>
 <?import javafx.scene.control.ChoiceBox?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.Separator?>
+<?import javafx.scene.control.TextField?>
 <?import javafx.scene.control.TitledPane?>
 <?import javafx.scene.control.ToggleButton?>
 <?import javafx.scene.control.Tooltip?>
@@ -60,6 +62,39 @@
                             </graphic>
                         </Button>
                         </HBox>
+
+                        <!-- Model parameters -->
+                        <Separator prefWidth="200.0" />
+                        <HBox alignment="CENTER_LEFT" styleClass="standard-spacing standard-padding">
+                            <Label styleClass="regular" text="%ui.params.label" />
+                            <Pane minWidth="5" HBox.hgrow="ALWAYS" />
+                            <Button fx:id="resetParamsButton" onAction="#resetParams" disable="true">
+                                <tooltip><Tooltip text="%ui.params.reset.tooltip" /></tooltip>
+                                <graphic><Text styleClass="fa-icon" text="&#xf0e2;" /></graphic>
+                            </Button>
+                        </HBox>
+                        <HBox alignment="CENTER_LEFT" styleClass="standard-spacing standard-padding">
+                            <Label styleClass="regular" text="%ui.params.pixel-size" />
+                            <Pane minWidth="5" HBox.hgrow="ALWAYS" />
+                            <TextField fx:id="pixelSizeField" prefWidth="80.0" disable="true">
+                                <tooltip><Tooltip text="%ui.params.pixel-size.tooltip" /></tooltip>
+                            </TextField>
+                        </HBox>
+                        <HBox alignment="CENTER_LEFT" styleClass="standard-spacing standard-padding">
+                            <Label styleClass="regular" text="%ui.params.min-diameter" />
+                            <Pane minWidth="5" HBox.hgrow="ALWAYS" />
+                            <TextField fx:id="minDiameterField" prefWidth="80.0" disable="true">
+                                <tooltip><Tooltip text="%ui.params.min-diameter.tooltip" /></tooltip>
+                            </TextField>
+                        </HBox>
+                        <HBox alignment="CENTER_LEFT" styleClass="standard-spacing standard-padding">
+                            <Label styleClass="regular" text="%ui.params.predict-inner-tongue" />
+                            <Pane minWidth="5" HBox.hgrow="ALWAYS" />
+                            <CheckBox fx:id="predictInnerTongueCheckBox" disable="true">
+                                <tooltip><Tooltip text="%ui.params.predict-inner-tongue.tooltip" /></tooltip>
+                            </CheckBox>
+                        </HBox>
+                        <Separator prefWidth="200.0" />
 
                         <!-- Channel selection -->
                         <HBox alignment="CENTER_LEFT" styleClass="standard-spacing standard-padding">

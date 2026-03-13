@@ -10,8 +10,10 @@ import java.util.ResourceBundle;
 import javafx.beans.property.StringProperty;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
 import org.controlsfx.control.SearchableComboBox;
 import org.slf4j.Logger;
@@ -46,6 +48,18 @@ public class AimSegController extends BorderPane {
     private Button convertToAnnotationsButton;
     @FXML
     private Button recomputeButton;
+    @FXML
+    private TextField pixelSizeField;
+    @FXML
+    private TextField minDiameterField;
+    @FXML
+    private CheckBox predictInnerTongueCheckBox;
+    @FXML
+    private Button resetParamsButton;
+
+    private double defaultPixelSize;
+    private double defaultMinDiameter;
+    private boolean defaultPredictInnerTongue;
 
     private final StringProperty modelDir = PathPrefs.createPersistentPreference("aimseg.model.dir", null);
 
@@ -61,6 +75,10 @@ public class AimSegController extends BorderPane {
         loader.load();
         deviceChoiceBox.getItems().addAll(PytorchManager.getAvailableDevices());
         refreshModels(modelDir.get());
+
+        // Refresh model params when selection changes
+        modelChoiceBox.getSelectionModel().selectedItemProperty().addListener(
+                (obs, oldVal, newVal) -> refreshModelParams(newVal));
 
         // Refresh channels and post-processing buttons whenever the image changes
         QuPathGUI.getInstance().imageDataProperty().addListener(
@@ -107,11 +125,21 @@ public class AimSegController extends BorderPane {
             return;
         }
 
+        double pixelSize, minDiameter;
+        try {
+            pixelSize = Double.parseDouble(pixelSizeField.getText());
+            minDiameter = Double.parseDouble(minDiameterField.getText());
+        } catch (NumberFormatException e) {
+            Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.invalid-params"));
+            return;
+        }
+        boolean predictInnerTongue = predictInnerTongueCheckBox.isSelected();
+
         int totalObjects = 0;
         for (var parentObject : selectedObjects) {
             var pathObjects = PredictionTools.runAimSeg(
                     modelPath, QP.getCurrentImageData(), parentObject, 0.5, 1,
-                    getSelectedChannel());
+                    getSelectedChannel(), pixelSize, minDiameter, predictInnerTongue);
             totalObjects += pathObjects.size();
         }
         logger.info("{} total objects created by AimSeg", totalObjects);
@@ -210,6 +238,11 @@ public class AimSegController extends BorderPane {
     }
 
     @FXML
+    private void resetParams() {
+        applyDefaultParams();
+    }
+
+    @FXML
     private void showModelDirInfo() {
         Dialogs.showMessageDialog("Model directory",
                 "AimSeg expects each model to be a folder containing:\n" +
@@ -250,6 +283,38 @@ public class AimSegController extends BorderPane {
         } catch (IOException e) {
             logger.error("Error listing model directory: {}", pathString, e);
         }
+    }
+
+    private void refreshModelParams(Path modelPath) {
+        if (modelPath == null || !Files.exists(modelPath.resolve("rdf.yaml"))) {
+            pixelSizeField.setDisable(true);
+            minDiameterField.setDisable(true);
+            predictInnerTongueCheckBox.setDisable(true);
+            resetParamsButton.setDisable(true);
+            pixelSizeField.setText("");
+            minDiameterField.setText("");
+            predictInnerTongueCheckBox.setSelected(false);
+            return;
+        }
+        try {
+            var params = PredictionTools.extractParametersFromYaml(modelPath.resolve("rdf.yaml"));
+            defaultPixelSize = (double) params.get("pixel_size");
+            defaultMinDiameter = (double) params.get("min_diameter");
+            defaultPredictInnerTongue = (boolean) params.get("predict_inner_tongue");
+            applyDefaultParams();
+            pixelSizeField.setDisable(false);
+            minDiameterField.setDisable(false);
+            predictInnerTongueCheckBox.setDisable(false);
+            resetParamsButton.setDisable(false);
+        } catch (IOException e) {
+            logger.error("Could not read model parameters from rdf.yaml", e);
+        }
+    }
+
+    private void applyDefaultParams() {
+        pixelSizeField.setText(String.valueOf(defaultPixelSize));
+        minDiameterField.setText(String.valueOf(defaultMinDiameter));
+        predictInnerTongueCheckBox.setSelected(defaultPredictInnerTongue);
     }
 
     private void refreshChannels() {

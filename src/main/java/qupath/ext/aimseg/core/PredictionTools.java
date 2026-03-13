@@ -91,7 +91,7 @@ public class PredictionTools {
      * Extracts AimSeg-specific parameters from the model's rdf.yaml config block.
      * Expected keys: {@code pixel_size}, {@code min_diameter}, {@code predict_inner_tongue}.
      */
-    static Map<String, Object> extractParametersFromYaml(Path yamlPath) throws IOException {
+    public static Map<String, Object> extractParametersFromYaml(Path yamlPath) throws IOException {
         Yaml yaml = new Yaml();
         try (var inputStream = Files.newInputStream(yamlPath)) {
             Map<String, Object> yamlData = yaml.load(inputStream);
@@ -317,40 +317,62 @@ public class PredictionTools {
     }
 
     /**
+     * Convenience overload that reads {@code pixel_size}, {@code min_diameter}, and
+     * {@code predict_inner_tongue} from the model's rdf.yaml and delegates to the
+     * full overload.
+     */
+    public static Collection<PathObject> runAimSeg(Path modelPath,
+                                                   ImageData<BufferedImage> imageData,
+                                                   PathObject parentObject,
+                                                   double minThreshold,
+                                                   double maxThreshold,
+                                                   int channel) throws IOException {
+        Map<String, Object> parameters = extractParametersFromYaml(modelPath.resolve("rdf.yaml"));
+        return runAimSeg(modelPath, imageData, parentObject, minThreshold, maxThreshold, channel,
+                (double) parameters.get("pixel_size"),
+                (double) parameters.get("min_diameter"),
+                (boolean) parameters.get("predict_inner_tongue"));
+    }
+
+    /**
      * Main AimSeg segmentation pipeline.
      * <p>
-     * Reads model parameters from the rdf.yaml file, runs inference on the region
-     * covered by {@code parentObject}, post-processes the prediction into QuPath
-     * annotation objects, builds the object hierarchy, and computes morphometric
-     * features on the resulting fibres.
+     * Runs inference on the region covered by {@code parentObject}, post-processes
+     * the prediction into QuPath detection objects, builds the object hierarchy, and
+     * computes morphometric features on the resulting fibres.
      *
-     * @param modelPath     path to the BioImage.IO model directory (must contain weights.pt and rdf.yaml)
-     * @param imageData     the current QuPath image data
-     * @param parentObject  the annotation defining the region to process
-     * @param minThreshold  minimum threshold for SDT-based instance segmentation
-     * @param maxThreshold  maximum threshold for SDT-based instance segmentation
+     * @param modelPath          path to the BioImage.IO model directory (must contain weights.pt and rdf.yaml)
+     * @param imageData          the current QuPath image data
+     * @param parentObject       the annotation defining the region to process
+     * @param minThreshold       minimum threshold for SDT-based instance segmentation
+     * @param maxThreshold       maximum threshold for SDT-based instance segmentation
+     * @param channel            image channel to use for inference (1-based)
+     * @param pixelSize          target pixel size in microns
+     * @param minDiameter        minimum object diameter in pixels for seed filtering
+     * @param predictInnerTongue whether to predict inner tongue structures
      * @return all objects created by the pipeline (fibres, axons, and optionally inner tongues)
      */
     public static Collection<PathObject> runAimSeg(Path modelPath,
-                                                ImageData<BufferedImage> imageData,
-                                                PathObject parentObject,
-                                                double minThreshold,
-                                                double maxThreshold,
-                                                int channel) throws IOException {
+                                                   ImageData<BufferedImage> imageData,
+                                                   PathObject parentObject,
+                                                   double minThreshold,
+                                                   double maxThreshold,
+                                                   int channel,
+                                                   double pixelSize,
+                                                   double minDiameter,
+                                                   boolean predictInnerTongue) throws IOException {
         var hierarchy = imageData.getHierarchy();
         if (!parentObject.getChildObjects().isEmpty()) {
             var allDescendants = getAllDescendants(parentObject);
             hierarchy.removeObjects(allDescendants, false);
         }
 
-        // Load model parameters from rdf.yaml
-        Map<String, Object> parameters = extractParametersFromYaml(modelPath.resolve("rdf.yaml"));
-        double targetPixelSizeMicrons = (double) parameters.get("pixel_size");
-        double minDiameterPixels = (double) parameters.get("min_diameter");
-        boolean predictInnerTongue = (boolean) parameters.get("predict_inner_tongue");
+        double targetPixelSizeMicrons = pixelSize;
+        double minDiameterPixels = minDiameter;
+        boolean predictInnerTongueFlag = predictInnerTongue;
 
         logger.info("Model parameters: pixel_size={} µm, min_diameter={} px, predict_inner_tongue={}",
-                targetPixelSizeMicrons, minDiameterPixels, predictInnerTongue);
+                targetPixelSizeMicrons, minDiameterPixels, predictInnerTongueFlag);
 
         double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, false);
         logger.info("Downsample factor: {}", downsample);
@@ -383,7 +405,7 @@ public class PredictionTools {
                 imageData, request, translateX, translateY);
 
         Collection<PathObject> innerTongues = List.of();
-        if (predictInnerTongue) {
+        if (predictInnerTongueFlag) {
             innerTongues = processSemantic(prediction, "Inner Tongue", 1, 2,
                     downsample, translateX, translateY);
         }
