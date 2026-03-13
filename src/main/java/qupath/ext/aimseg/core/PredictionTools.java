@@ -259,7 +259,7 @@ public class PredictionTools {
         return detectedROIs.stream()
                 .map(roiIJ -> {
                     var roi = IJTools.convertToROI(roiIJ, calibration, downsample, plane);
-                    return PathObjects.createAnnotationObject(
+                    return PathObjects.createDetectionObject(
                             roi.translate(translateX, translateY),
                             PathClass.getInstance(className));
                 })
@@ -300,7 +300,7 @@ public class PredictionTools {
         return Arrays.stream(roiList)
                 .map(roiIJ -> {
                     var roi = IJTools.convertToROI(roiIJ, calibration, downsample, plane);
-                    return PathObjects.createAnnotationObject(
+                    return PathObjects.createDetectionObject(
                             roi.translate(translateX, translateY),
                             PathClass.getInstance(className));
                 })

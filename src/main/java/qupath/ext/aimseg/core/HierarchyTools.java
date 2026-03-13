@@ -46,7 +46,7 @@ public class HierarchyTools {
                 } else if (overlapRatio > 0.9) {
                     Geometry clipped = GeometryTools.homogenizeGeometryCollection(overlap);
                     ROI clippedROI = GeometryTools.geometryToROI(clipped, child.getROI().getImagePlane());
-                    PathObject clippedChild = PathObjects.createAnnotationObject(clippedROI, child.getPathClass());
+                    PathObject clippedChild = PathObjects.createDetectionObject(clippedROI, child.getPathClass());
                     parent.addChildObject(clippedChild);
                 }
             }
