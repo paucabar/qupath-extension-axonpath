@@ -120,17 +120,12 @@ public class AimSegController extends BorderPane {
         var path = Path.of(pathString);
         if (!Files.exists(path)) return;
 
-        // Clear without triggering a selection-change event on an empty list
-        modelChoiceBox.getSelectionModel().clearSelection();
-        modelChoiceBox.getItems().clear();
-
         try (var pathStream = Files.list(path)) {
-            modelChoiceBox.getItems().addAll(
-                    pathStream
-                            .filter(Files::isDirectory)
-                            .filter(p -> Files.exists(p.resolve("weights.pt")) && Files.exists(p.resolve("rdf.yaml")))
-                            .toList()
-            );
+            var models = pathStream
+                    .filter(Files::isDirectory)
+                    .filter(p -> Files.exists(p.resolve("weights.pt")) && Files.exists(p.resolve("rdf.yaml")))
+                    .toList();
+            modelChoiceBox.getItems().setAll(models);
         } catch (IOException e) {
             logger.error("Error listing model directory: {}", pathString, e);
         }
