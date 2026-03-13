@@ -73,7 +73,8 @@ public class AimSegController extends BorderPane {
             Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.model-not-downloaded"));
             return;
         }
-        if (QP.getSelectedObject() == null) {
+        var parentObject = QP.getSelectedObject();
+        if (parentObject == null) {
             Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-selection"));
             return;
         }
@@ -83,9 +84,14 @@ public class AimSegController extends BorderPane {
         }
 
         var pathObjects = PredictionTools.runAimSeg(
-                modelPath, QP.getCurrentImageData(), QP.getSelectedObject(), 0.5, 1,
+                modelPath, QP.getCurrentImageData(), parentObject, 0.5, 1,
                 getSelectedChannel());
         logger.info("{} objects created by AimSeg", pathObjects.size());
+
+        if (parentObject.getChildObjects().stream()
+                .noneMatch(it -> it.getPathClass() == PathClass.getInstance("Fibre"))) {
+            Dialogs.showWarningNotification("AimSeg extension", resources.getString("ui.error.no-valid-fibres"));
+        }
     }
 
     @FXML

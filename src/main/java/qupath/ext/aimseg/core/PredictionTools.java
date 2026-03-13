@@ -284,6 +284,10 @@ public class PredictionTools {
         analyzeParticles(binaryMask, options, Measurements.AREA, 0, Double.POSITIVE_INFINITY, 0, 1);
 
         RoiManager rm = RoiManager.getInstance();
+        if (rm == null || rm.getCount() == 0) {
+            logger.info("processSemantic ({}): 0 detected objects", className);
+            return java.util.Collections.emptySet();
+        }
         rm.setVisible(false);
         var roiList = rm.getRoisAsArray();
         rm.close();
@@ -301,6 +305,15 @@ public class PredictionTools {
                             PathClass.getInstance(className));
                 })
                 .collect(Collectors.toSet());
+    }
+
+    private static List<PathObject> getAllDescendants(PathObject parent) {
+        var result = new java.util.ArrayList<PathObject>();
+        for (var child : parent.getChildObjects()) {
+            result.add(child);
+            result.addAll(getAllDescendants(child));
+        }
+        return result;
     }
 
     /**
@@ -324,7 +337,11 @@ public class PredictionTools {
                                                 double minThreshold,
                                                 double maxThreshold,
                                                 int channel) throws IOException {
-        parentObject.getChildObjects().clear();
+        var hierarchy = imageData.getHierarchy();
+        if (!parentObject.getChildObjects().isEmpty()) {
+            var allDescendants = getAllDescendants(parentObject);
+            hierarchy.removeObjects(allDescendants, false);
+        }
 
         // Load model parameters from rdf.yaml
         Map<String, Object> parameters = extractParametersFromYaml(modelPath.resolve("rdf.yaml"));
