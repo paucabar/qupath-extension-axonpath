@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import ai.djl.Device;
 import qupath.ext.djl.DjlTools;
 import qupath.imagej.processing.RoiLabeling;
 import qupath.imagej.processing.SimpleThresholding;
@@ -114,7 +115,7 @@ public class PredictionTools {
     static ImagePlus modelInference(URI modelUri, String layout, int inputWidth, int inputHeight,
                                     Padding padding, int[] inputShape,
                                     ImageData<BufferedImage> imageData, ImageServer<BufferedImage> server,
-                                    RegionRequest request, int channel) throws IOException {
+                                    RegionRequest request, int channel, String device) throws IOException {
         // Compute min/max stats from the correct channel using QuPath's raster directly
         double min, max;
         try {
@@ -135,6 +136,7 @@ public class PredictionTools {
             max = 1;
         }
 
+        DjlTools.setOverrideDevice("PyTorch", Device.fromName(device));
         ImagePlus prediction;
         try (var dnn = DjlTools.createDnnModel(modelUri, layout, inputShape)) {
             var op = ImageOps.buildImageDataOp()
@@ -326,12 +328,14 @@ public class PredictionTools {
                                                    PathObject parentObject,
                                                    double minThreshold,
                                                    double maxThreshold,
-                                                   int channel) throws IOException {
+                                                   int channel,
+                                                   String device) throws IOException {
         Map<String, Object> parameters = extractParametersFromYaml(modelPath.resolve("rdf.yaml"));
         return runAimSeg(modelPath, imageData, parentObject, minThreshold, maxThreshold, channel,
                 (double) parameters.get("pixel_size"),
                 (double) parameters.get("min_diameter"),
-                (boolean) parameters.get("predict_inner_tongue"));
+                (boolean) parameters.get("predict_inner_tongue"),
+                device);
     }
 
     /**
@@ -360,7 +364,8 @@ public class PredictionTools {
                                                    int channel,
                                                    double pixelSize,
                                                    double minDiameter,
-                                                   boolean predictInnerTongue) throws IOException {
+                                                   boolean predictInnerTongue,
+                                                   String device) throws IOException {
         var hierarchy = imageData.getHierarchy();
         if (!parentObject.getChildObjects().isEmpty()) {
             var allDescendants = getAllDescendants(parentObject);
@@ -393,7 +398,7 @@ public class PredictionTools {
         ImagePlus prediction = modelInference(
                 modelPath.resolve("weights.pt").toUri(),
                 "NCHW", 512, 512, Padding.symmetric(32), inputShape,
-                imageData, server, request, channel);
+                imageData, server, request, channel, device);
 
         // Post-process prediction channels into QuPath objects
         var fibres = processSDT(prediction, imageData.getHierarchy(), "Fibre", 2,

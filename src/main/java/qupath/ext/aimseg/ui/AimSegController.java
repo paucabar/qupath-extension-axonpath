@@ -62,6 +62,7 @@ public class AimSegController extends BorderPane {
     private boolean defaultPredictInnerTongue;
 
     private final StringProperty modelDir = PathPrefs.createPersistentPreference("aimseg.model.dir", null);
+    private final StringProperty preferredDevice = PathPrefs.createPersistentPreference("aimseg.inference.device", null);
 
     public static AimSegController createInstance() throws IOException {
         return new AimSegController();
@@ -73,7 +74,7 @@ public class AimSegController extends BorderPane {
         loader.setRoot(this);
         loader.setController(this);
         loader.load();
-        deviceChoiceBox.getItems().addAll(PytorchManager.getAvailableDevices());
+        configureDevices();
         refreshModels(modelDir.get());
 
         // Refresh model params when selection changes
@@ -139,7 +140,7 @@ public class AimSegController extends BorderPane {
         for (var parentObject : selectedObjects) {
             var pathObjects = PredictionTools.runAimSeg(
                     modelPath, QP.getCurrentImageData(), parentObject, 0.5, 1,
-                    getSelectedChannel(), pixelSize, minDiameter, predictInnerTongue);
+                    getSelectedChannel(), pixelSize, minDiameter, predictInnerTongue, getDevice());
             totalObjects += pathObjects.size();
         }
         logger.info("{} total objects created by AimSeg", totalObjects);
@@ -267,6 +268,20 @@ public class AimSegController extends BorderPane {
         if (dir == null) return;
         modelDir.set(dir.toString());
         refreshModels(modelDir.get());
+    }
+
+    private void configureDevices() {
+        deviceChoiceBox.getItems().addAll(PytorchManager.getAvailableDevices());
+        deviceChoiceBox.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) ->
+                preferredDevice.set(newVal));
+        if (preferredDevice.get() != null) {
+            deviceChoiceBox.setValue(preferredDevice.get());
+        }
+    }
+
+    private String getDevice() {
+        String device = deviceChoiceBox.getValue();
+        return (device == null || device.isBlank()) ? "cpu" : device;
     }
 
     private void refreshModels(String pathString) {
