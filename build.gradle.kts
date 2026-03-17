@@ -19,9 +19,9 @@ dependencies {
     implementation(libs.bundles.markdown)
 
     implementation(libs.bioimageio.spec)
-    implementation("org.yaml:snakeyaml:2.0")
+    implementation(libs.snakeyaml)
     implementation(libs.deepJavaLibrary)
-    implementation("io.github.qupath:qupath-extension-djl:0.4.0")
+    implementation(libs.qupath.djl)
 
     // For testing
     testImplementation(libs.junit)
