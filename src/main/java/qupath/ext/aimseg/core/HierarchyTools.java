@@ -3,6 +3,7 @@ package qupath.ext.aimseg.core;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 import org.locationtech.jts.geom.Geometry;
@@ -22,6 +23,42 @@ public class HierarchyTools {
 
     private HierarchyTools() {
         throw new UnsupportedOperationException("Do not instantiate this class");
+    }
+
+    /**
+     * Returns all descendants of the given object (children, grandchildren, etc.).
+     */
+    public static List<PathObject> getAllDescendants(PathObject parent) {
+        var result = new ArrayList<PathObject>();
+        for (var child : parent.getChildObjects()) {
+            result.add(child);
+            result.addAll(getAllDescendants(child));
+        }
+        return result;
+    }
+
+    /**
+     * Clips fibres to the actual parent annotation boundary.
+     * Fibres fully inside are kept as-is; fibres partially overlapping are clipped to the boundary.
+     * Only fibres with no overlap at all are discarded.
+     */
+    private static Collection<PathObject> clipToParentBoundary(PathObject rootObject, Collection<PathObject> fibres) {
+        Geometry parentShape = rootObject.getROI().getGeometry();
+        List<PathObject> result = new ArrayList<>();
+        for (var fibre : fibres) {
+            Geometry fibreShape = fibre.getROI().getGeometry();
+            Geometry overlap = parentShape.intersection(fibreShape);
+            if (overlap.isEmpty()) continue;
+            double overlapRatio = overlap.getArea() / fibreShape.getArea();
+            if (overlapRatio > 0.9999) {
+                result.add(fibre);
+            } else {
+                Geometry clipped = GeometryTools.homogenizeGeometryCollection(overlap);
+                ROI clippedROI = GeometryTools.geometryToROI(clipped, fibre.getROI().getImagePlane());
+                result.add(PathObjects.createDetectionObject(clippedROI, fibre.getPathClass()));
+            }
+        }
+        return result;
     }
 
     /**
@@ -65,42 +102,50 @@ public class HierarchyTools {
                                 Collection<PathObject> axons,
                                 Collection<PathObject> innerTongues) {
 
-        boolean withInnerTongues = !innerTongues.isEmpty();
+        // Clip all objects to the actual parent annotation shape (bounding box may be larger)
+        Collection<PathObject> boundedFibres = clipToParentBoundary(rootObject, fibres);
+        Collection<PathObject> boundedAxons = clipToParentBoundary(rootObject, axons);
+        Collection<PathObject> boundedInnerTongues = clipToParentBoundary(rootObject, innerTongues);
+        logger.info("Clipped to parent boundary: fibres {} → {}, axons {} → {}, inner tongues {} → {}",
+                fibres.size(), boundedFibres.size(), axons.size(), boundedAxons.size(),
+                innerTongues.size(), boundedInnerTongues.size());
+
+        boolean withInnerTongues = !boundedInnerTongues.isEmpty();
 
         if (withInnerTongues) {
-            logger.info("Assigning {} inner tongues to {} fibres", innerTongues.size(), fibres.size());
-            assignChildrenToParents(fibres, innerTongues);
+            logger.info("Assigning {} inner tongues to {} fibres", boundedInnerTongues.size(), boundedFibres.size());
+            assignChildrenToParents(boundedFibres, boundedInnerTongues);
 
-            Collection<PathObject> assignedInnerTongues = fibres.stream()
+            Collection<PathObject> assignedInnerTongues = boundedFibres.stream()
                     .flatMap(f -> f.getChildObjects().stream())
                     .filter(it -> it.getPathClass() == PathClass.getInstance("Inner Tongue"))
                     .toList();
 
-            logger.info("Assigning {} axons to {} inner tongues", axons.size(), assignedInnerTongues.size());
-            assignChildrenToParents(assignedInnerTongues, axons);
+            logger.info("Assigning {} axons to {} inner tongues", boundedAxons.size(), assignedInnerTongues.size());
+            assignChildrenToParents(assignedInnerTongues, boundedAxons);
 
             Collection<PathObject> orphans = Stream.concat(
-                    innerTongues.stream().filter(it -> it.getLevel() == 0),
-                    axons.stream().filter(it -> it.getLevel() == 0)
+                    boundedInnerTongues.stream().filter(it -> it.getLevel() == 0),
+                    boundedAxons.stream().filter(it -> it.getLevel() == 0)
             ).toList();
             logger.info("Removing {} orphaned objects", orphans.size());
             hierarchy.removeObjects(orphans, false);
 
         } else {
-            logger.info("Assigning {} axons to {} fibres", axons.size(), fibres.size());
-            assignChildrenToParents(fibres, axons);
+            logger.info("Assigning {} axons to {} fibres", boundedAxons.size(), boundedFibres.size());
+            assignChildrenToParents(boundedFibres, boundedAxons);
 
-            Collection<PathObject> orphanedAxons = axons.stream()
+            Collection<PathObject> orphanedAxons = boundedAxons.stream()
                     .filter(it -> it.getLevel() == 0)
                     .toList();
             logger.info("Removing {} orphaned axons", orphanedAxons.size());
             hierarchy.removeObjects(orphanedAxons, false);
         }
 
-        Collection<PathObject> incompleteFibres = findIncompleteFibres(fibres, withInnerTongues);
+        Collection<PathObject> incompleteFibres = findIncompleteFibres(boundedFibres, withInnerTongues);
         logger.info("Removing {} incomplete fibres", incompleteFibres.size());
 
-        Collection<PathObject> validFibres = fibres.stream()
+        Collection<PathObject> validFibres = boundedFibres.stream()
                 .filter(f -> !incompleteFibres.contains(f))
                 .collect(toCollection(ArrayList::new));
         rootObject.addChildObjects(validFibres);

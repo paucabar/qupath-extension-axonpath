@@ -4,8 +4,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.ResourceBundle;
 import javafx.beans.property.StringProperty;
 import javafx.fxml.FXML;
@@ -164,7 +162,7 @@ public class AimSegController extends BorderPane {
 
         var detections = QP.getSelectedObjects().stream()
                 .filter(p -> !isAimSegClass(p))
-                .flatMap(p -> getAllDescendants(p).stream())
+                .flatMap(p -> HierarchyTools.getAllDescendants(p).stream())
                 .filter(it -> isAimSegClass(it) && it.isDetection())
                 .toList();
 
@@ -368,20 +366,11 @@ public class AimSegController extends BorderPane {
         boolean hasAimSegDetections = selected != null
                 && selected.stream().noneMatch(this::isAimSegClass)
                 && selected.stream()
-                .flatMap(p -> getAllDescendants(p).stream())
+                .flatMap(p -> HierarchyTools.getAllDescendants(p).stream())
                 .anyMatch(it -> isAimSegClass(it) && it.isDetection());
 
         convertToAnnotationsButton.setDisable(!hasAimSegDetections);
         recomputeButton.setDisable(!hasAimSegAnnotations);
-    }
-
-    private static List<PathObject> getAllDescendants(PathObject parent) {
-        var result = new ArrayList<PathObject>();
-        for (var child : parent.getChildObjects()) {
-            result.add(child);
-            result.addAll(getAllDescendants(child));
-        }
-        return result;
     }
 
     /**

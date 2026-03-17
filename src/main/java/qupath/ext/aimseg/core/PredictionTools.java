@@ -309,15 +309,6 @@ public class PredictionTools {
                 .collect(Collectors.toSet());
     }
 
-    private static List<PathObject> getAllDescendants(PathObject parent) {
-        var result = new java.util.ArrayList<PathObject>();
-        for (var child : parent.getChildObjects()) {
-            result.add(child);
-            result.addAll(getAllDescendants(child));
-        }
-        return result;
-    }
-
     /**
      * Convenience overload that reads {@code pixel_size}, {@code min_diameter}, and
      * {@code predict_inner_tongue} from the model's rdf.yaml and delegates to the
@@ -368,7 +359,7 @@ public class PredictionTools {
                                                    String device) throws IOException {
         var hierarchy = imageData.getHierarchy();
         if (!parentObject.getChildObjects().isEmpty()) {
-            var allDescendants = getAllDescendants(parentObject);
+            var allDescendants = HierarchyTools.getAllDescendants(parentObject);
             hierarchy.removeObjects(allDescendants, false);
         }
 
