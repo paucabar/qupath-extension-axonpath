@@ -23,53 +23,13 @@ import qupath.lib.gui.prefs.PathPrefs;
 import java.io.IOException;
 
 
-/**
- * This is a demo to provide a template for creating a new QuPath extension.
- * <p>
- * It doesn't do much - it just shows how to add a menu item and a preference.
- * See the code and comments below for more info.
- * <p>
- * <b>Important!</b> For your extension to work in QuPath, you need to make sure the name &amp; package
- * of this class is consistent with the file
- * <pre>
- *     /resources/META-INF/services/qupath.lib.gui.extensions.QuPathExtension
- * </pre>
- */
 public class AimSegExtension implements QuPathExtension, GitHubProject {
-	// TODO: add and modify strings to this resource bundle as needed
-	/**
-	 * A resource bundle containing all the text used by the extension. This may be useful for translation to other languages.
-	 * Note that this is optional, and you can define the text within the code and FXML files that you use.
-	 */
 	private static final ResourceBundle resources = ResourceBundle.getBundle("qupath.ext.aimseg.ui.strings");
 	private static final Logger logger = LoggerFactory.getLogger(AimSegExtension.class);
 
-	/**
-	 * Display name for your extension
-	 * TODO: define this
-	 */
 	private static final String EXTENSION_NAME = resources.getString("extension.title");
-
-	/**
-	 * Short description, used under 'Extensions > Installed extensions'
-	 * TODO: define this
-	 */
 	private static final String EXTENSION_DESCRIPTION = resources.getString("extension.description");
-
-	/**
-	 * QuPath version that the extension is designed to work with.
-	 * This allows QuPath to inform the user if it seems to be incompatible.
-	 * TODO: define this
-	 */
-	private static final Version EXTENSION_QUPATH_VERSION = Version.parse("v0.6.0");
-
-	/**
-	 * GitHub repo that your extension can be found at.
-	 * This makes it easier for users to find updates to your extension.
-	 * If you don't want to support this feature, you can remove
-	 * references to GitHubRepo and GitHubProject from your extension.
-	 * TODO: define this
-	 */
+	private static final Version EXTENSION_QUPATH_VERSION = Version.parse("v0.7.0");
 	private static final GitHubRepo EXTENSION_REPOSITORY = GitHubRepo.create(
 			EXTENSION_NAME, "paucabar", "AimSeg_QuPath_Extension");
 
@@ -151,7 +111,7 @@ public class AimSegExtension implements QuPathExtension, GitHubProject {
 	 */
 	private void addMenuItem(QuPathGUI qupath) {
 		var menu = qupath.getMenu("Extensions", false);
-		MenuItem menuItem = new MenuItem("AimSeg extension");
+		MenuItem menuItem = new MenuItem("AimSeg");
 		menuItem.setOnAction(e -> createStage());
 		menuItem.disableProperty().bind(enableExtensionProperty.not());
 		menu.getItems().add(menuItem);
@@ -168,7 +128,7 @@ public class AimSegExtension implements QuPathExtension, GitHubProject {
 				Scene scene = new Scene(new BorderPane(pane));
 				pane.heightProperty().addListener((v, o, n) -> handleStageHeightChange());
 				stage.initOwner(QuPathGUI.getInstance().getStage());
-				stage.setTitle("AimSeg extension");
+				stage.setTitle("AimSeg");
 				stage.setScene(scene);
 				stage.setResizable(false);
 			} catch (IOException e) {

@@ -12,11 +12,17 @@ import ij.process.ImageStatistics;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
+import java.nio.file.Files;
+import org.yaml.snakeyaml.Yaml;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import java.util.Map;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import ai.djl.Device;
 import qupath.ext.djl.DjlTools;
 import qupath.imagej.processing.RoiLabeling;
 import qupath.imagej.processing.SimpleThresholding;
@@ -27,6 +33,7 @@ import qupath.lib.images.ImageData;
 import qupath.lib.images.servers.ImageServer;
 import qupath.lib.images.servers.LabeledImageServer;
 import qupath.lib.images.servers.PixelType;
+import qupath.lib.images.servers.TransformedServerBuilder;
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.PathObjects;
 import qupath.lib.objects.classes.PathClass;
@@ -41,298 +48,381 @@ import qupath.opencv.tools.OpenCVTools;
 import java.awt.image.BufferedImage;
 
 /**
- * This script demonstrates how to run an AimSeg model in QuPath,
- * including the basic functions for model inference and post-processing in QuPath.
- * The output is stored as three distinct classes of segmented objects: axon, inner tongue, and fibre.
+ * Core processing tools for running AimSeg inference in QuPath.
  * <p>
- *
- * Prior to running this script, ensure that the DJL extension is installed in QuPath
- * and PyTorch has been downloaded – see <a href="https://qupath.readthedocs.io/en/stable/docs/deep/djl.html">the QuPath docs</a>.
+ * The pipeline reads a BioImage.IO model bundle (weights.pt + rdf.yaml),
+ * runs inference on a selected image region, and returns segmented objects
+ * organised into a meaningful hierarchy:
+ * <ul>
+ *   <li>Electron microscopy: Fibre &gt; Inner Tongue &gt; Axon</li>
+ *   <li>Brightfield: Fibre &gt; Axon</li>
+ * </ul>
+ * Whether inner tongues are predicted is controlled by the {@code predict_inner_tongue}
+ * flag in the model's rdf.yaml config.
+ * <p>
+ * Requires the DJL extension and PyTorch engine to be available in QuPath.
+ * See <a href="https://qupath.readthedocs.io/en/stable/docs/deep/djl.html">the QuPath docs</a>.
  */
 public class PredictionTools {
+    private static final Logger logger = LoggerFactory.getLogger(PredictionTools.class);
 
     private PredictionTools() {
         throw new UnsupportedOperationException("Do not instantiate this class");
     }
 
     /**
-     * Function to calculate the downsample factor based on target pixel size
+     * Calculates the downsample factor needed to reach the target pixel size.
+     * If the target pixel size is smaller than the image pixel size and upscaling
+     * is not allowed, the downsample factor is set to 1 and a warning is logged.
      */
     static double calculateDownsampleFactor(ImageData<BufferedImage> imageData, double targetPixelSizeMicrons, boolean allowUpscaling) {
-        // Get the current pixel size from image metadata
-        double pixelSizeMicrons = imageData.getServer().getPixelCalibration().getAveragedPixelSizeMicrons(); // maybe getPixelHeight() and getPixelWidth()
+        double imagePixelSizeMicrons = imageData.getServer().getPixelCalibration().getAveragedPixelSizeMicrons();
+        double downsampleFactor = targetPixelSizeMicrons / imagePixelSizeMicrons;
 
-        // Calculate the downsample factor
-        double downsampleFactor = targetPixelSizeMicrons / pixelSizeMicrons;
-
-        // Handle upscaling based on the user's preference
         if (!allowUpscaling && downsampleFactor < 1) {
-            throw new IllegalArgumentException("Target pixel size is smaller than the current pixel size. Upscaling is disabled.");
-        }
-
-        // Ensure the downsample factor is at least 1 if upscaling is not allowed
-        if (!allowUpscaling) {
-            downsampleFactor = Math.max(downsampleFactor, 1);
+            logger.warn("Target pixel size ({} µm) is smaller than the image pixel size ({} µm). Downsample will not be applied (factor set to 1).",
+                    targetPixelSizeMicrons, imagePixelSizeMicrons);
+            return 1;
         }
 
         return Math.round(downsampleFactor);
     }
 
     /**
-     * This function runs an AimSeg model using DJL in QuPath
+     * Extracts AimSeg-specific parameters from the model's rdf.yaml config block.
+     * Expected keys: {@code pixel_size}, {@code min_diameter}, {@code predict_inner_tongue}.
      */
-    static ImagePlus modelInference(URI uri, String layout, int inputWidth, int inputHeight, Padding padding, int[] inputShape,
-                                    ImageData<BufferedImage> imageData, ImageServer<BufferedImage> server, RegionRequest request) throws IOException {
-        ImagePlus imp = IJTools.convertToImagePlus(server, request).getImage();
+    public static Map<String, Object> extractParametersFromYaml(Path yamlPath) throws IOException {
+        Yaml yaml = new Yaml();
+        try (var inputStream = Files.newInputStream(yamlPath)) {
+            Map<String, Object> yamlData = yaml.load(inputStream);
+            Map<String, Object> config = (Map<String, Object>) yamlData.get("config");
+            return Map.of(
+                    "pixel_size", config.get("pixel_size"),
+                    "min_diameter", config.get("min_diameter"),
+                    "predict_inner_tongue", config.get("predict_inner_tongue")
+            );
+        }
+    }
 
-        // Get the statistics of the image to get the minimum and maximum pixel values
-        ImageStatistics stats = imp.getStatistics();
-        double min = stats.min;
-        double max = stats.max;
-        double difference = max - min;
-        ImagePlus impOutput;
-        // Apply prediction
-        try (var dnn = DjlTools.createDnnModel(uri, layout, inputShape)) {
+    /**
+     * Runs the AimSeg DNN model on a region of the image and returns the
+     * raw prediction as an ImageJ ImagePlus.
+     * <p>
+     * The image is normalised to [0, 1] using its min/max pixel values before
+     * being passed to the model.
+     */
+    static ImagePlus modelInference(URI modelUri, String layout, int inputWidth, int inputHeight,
+                                    Padding padding, int[] inputShape,
+                                    ImageData<BufferedImage> imageData, ImageServer<BufferedImage> server,
+                                    RegionRequest request, int channel, String device) throws IOException {
+        // Compute min/max stats from the correct channel using QuPath's raster directly
+        double min, max;
+        try {
+            var channelPixels = server.readRegion(request);
+            var raster = channelPixels.getRaster();
+            int channelIdx = channel - 1;
+            double[] pixels = raster.getSamples(0, 0, raster.getWidth(), raster.getHeight(), channelIdx, (double[]) null);
+            min = Double.MAX_VALUE;
+            max = -Double.MAX_VALUE;
+            for (double p : pixels) {
+                if (p < min) min = p;
+                if (p > max) max = p;
+            }
+            logger.info("Channel {} stats: min={}, max={}", channel, min, max);
+        } catch (Exception e) {
+            logger.warn("Could not compute channel stats, using defaults 0-1", e);
+            min = 0;
+            max = 1;
+        }
+
+        DjlTools.setOverrideDevice("PyTorch", Device.fromName(device));
+        ImagePlus prediction;
+        try (var dnn = DjlTools.createDnnModel(modelUri, layout, inputShape)) {
             var op = ImageOps.buildImageDataOp()
                     .appendOps(
+                            ImageOps.Channels.extract(channel - 1),
                             ImageOps.Core.ensureType(PixelType.FLOAT32),
-                            //ImageOps.Normalize.percentile(0.1, 99.9),
                             ImageOps.Core.subtract(min),
-                            ImageOps.Core.divide(difference),
+                            ImageOps.Core.divide(max - min),
                             ImageOps.ML.dnn(dnn, inputWidth, inputHeight, padding)
                     );
-
-            // Run the prediction, getting an OpenCV Mat as output
             var mat = op.apply(imageData, request);
-
-            // Convert to an ImageJ ImagePlus
-            impOutput = OpenCVTools.matToImagePlus("Prediction", mat);
+            prediction = OpenCVTools.matToImagePlus("Prediction", mat);
             mat.close();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
 
-        //impOutput.show()
-
-        return impOutput;
+        return prediction;
     }
 
     /**
-     * Implements ImageJ's Particle Analyzer
-     * The method will always return an ImagePlus
-     * options is defined as an integer using ParticleAnalyzer fields
-     * options is defined as an integer using Interface Measurements fields
-     * results table is not given as an argument because the method is never used to measure
+     * Runs ImageJ's Particle Analyzer on a binary image.
+     * Always returns an output ImagePlus with a standard (non-inverted) LUT.
      */
-    static ImagePlus analyzeParticles(ImagePlus imp, int options, int measurements, double minSize, double maxSize, double minCircularity, double maxCircularity) {
+    static ImagePlus analyzeParticles(ImagePlus imp, int options, int measurements,
+                                      double minSize, double maxSize,
+                                      double minCircularity, double maxCircularity) {
         var rt = new ResultsTable();
         var pa = new ParticleAnalyzer(options, measurements, rt, minSize, maxSize, minCircularity, maxCircularity);
         ImageProcessor ip = imp.getProcessor();
         ip.setBinaryThreshold();
         pa.setHideOutputImage(true);
         pa.analyze(imp, ip);
-        ImagePlus impOutput = pa.getOutputImage();
-        if (impOutput.isInvertedLut()) {
-            IJ.run(impOutput, "Grays", ""); // get the non-inverted LUT
+        ImagePlus output = pa.getOutputImage();
+        if (output.isInvertedLut()) {
+            IJ.run(output, "Grays", "");
         }
-        return impOutput;
+        return output;
     }
 
     /**
-     * Method to get an SDT channel from an image plus and return an instance segmentation in the
-     * form of QuPath objects.
+     * Performs instance segmentation on a Signed Distance Transform (SDT) channel
+     * of the model prediction.
+     * <p>
+     * The pipeline is:
+     * <ol>
+     *   <li>Threshold the SDT channel to get seed regions</li>
+     *   <li>Add seeds to the hierarchy and render them as a 16-bit label image
+     *       via a {@link LabeledImageServer}</li>
+     *   <li>Apply a 2D watershed using the SDT channel as intensity guidance</li>
+     *   <li>Convert the resulting label image back to QuPath annotation objects</li>
+     * </ol>
+     * Seeds smaller than 30% of the expected minimum object diameter are filtered out.
      */
-    static Collection<PathObject> processSDT(ImagePlus imp,
+    static Collection<PathObject> processSDT(ImagePlus prediction,
                                              PathObjectHierarchy hierarchy,
-                                             DataType dataType,
-                                             double targetPixelSizeMicrons, double minDiameterMicrons,
                                              String className,
                                              int channel,
-                                             double minThreshold, double maxThreshold, double downsample,
-                                             ImageData<BufferedImage> imageData, RegionRequest request,
+                                             double minThreshold, double maxThreshold,
+                                             double downsample,
+                                             double minDiameterPixels,
+                                             ImageData<BufferedImage> imageData,
+                                             RegionRequest request,
                                              double translateX, double translateY) throws IOException {
-        // Create ROIs from thresholds
-        imp.setC(channel); // Set the channel index (1-based)
-        ImageProcessor ip = imp.getProcessor(); // Get the ImageProcessor of the specified channel
-        ip.setThreshold(minThreshold, maxThreshold, ImageProcessor.NO_LUT_UPDATE);
-        var multipartRoi = SimpleThresholding.thresholdToROI(ip, request); // generates a multi-part ROI including all the thresholded regions
-        var roiList = RoiTools.splitROI(multipartRoi); // split the multi-part ROI into separate ROIs
+        // Threshold the SDT channel to obtain seed regions
+        prediction.setC(channel);
+        ImageProcessor sdtChannel = prediction.getProcessor().duplicate();
+        sdtChannel.setThreshold(minThreshold, maxThreshold, ImageProcessor.NO_LUT_UPDATE);
 
-        // Convert QuPath ROIs to objects
-        var pathObjects = roiList.stream().map(
-                roi -> PathObjects.createAnnotationObject(roi, PathClass.getInstance("Seed")))
+        var thresholdedROI = SimpleThresholding.thresholdToROI(sdtChannel, request);
+        if (thresholdedROI == null) {
+            logger.warn("processSDT ({}): no regions found above threshold", className);
+            return java.util.Collections.emptySet();
+        }
+        var seedROIs = RoiTools.splitROI(thresholdedROI);
+        var seedObjects = seedROIs.stream()
+                .map(roi -> PathObjects.createAnnotationObject(roi, PathClass.getInstance("Seed")))
                 .toList();
-        hierarchy.addObjects(pathObjects);
+        hierarchy.addObjects(seedObjects);
 
-        // Create an ImageServer for seed instances
-        double minAreaMicrons = Math.PI * Math.pow(minDiameterMicrons / 2, 2);
-        double minAreaPixels = minAreaMicrons / Math.pow(targetPixelSizeMicrons, 2) * downsample;
-        double minSizePixels = switch (dataType) {
-            case ELECTRON_MICROSCOPY -> minAreaPixels * 0.4;
-            case BRIGHTFIELD -> minAreaPixels * 0.2;
-        };
+        // Filter seeds smaller than 30% of the minimum expected object diameter
+        double minSeedRadius = 0.3 * minDiameterPixels / 2;
+        double minSeedArea = Math.PI * Math.pow(minSeedRadius, 2);
 
+        // Render seeds as a 16-bit instance label image using LabeledImageServer.
+        // A seed-specific RegionRequest is required so the server path matches correctly.
         var seedServer = new LabeledImageServer.Builder(imageData)
-                .backgroundLabel(0, ColorTools.BLACK) // Specify background label (usually 0 or 255)
-                .downsample(downsample)    // Choose server resolution; this should match the resolution at which tiles are exported
+                .backgroundLabel(0, ColorTools.BLACK)
+                .downsample(downsample)
                 .useAnnotations()
                 .useInstanceLabels()
-                .useFilter(p -> p.isAnnotation() && p.getPathClass() == PathClass.getInstance("Seed") && p.getROI().getArea() > minSizePixels)
-                .multichannelOutput(false) // If true, each label refers to the channel of a multichannel binary image (required for multiclass probability)
+                .useFilter(p -> p.isAnnotation()
+                        && p.getPathClass() == PathClass.getInstance("Seed")
+                        && p.getROI().getArea() > minSeedArea)
+                .multichannelOutput(false)
                 .build();
 
-        // Uncomment if you want to export the label image
-        //def name = GeneralTools.stripExtension(imageData.getServer().getMetadata().getName()) // get image name to export annotations
-        //def pathLabel = buildFilePath(labelDir, name + ".tif") // Define instance output file paths
-        //writeImage(seedServer, pathLabel) // write the image
+        RegionRequest seedRequest = RegionRequest.createInstance(seedServer.getPath(), request);
+        ImagePlus labelImage = IJTools.convertToImagePlus(seedServer, seedRequest).getImage();
 
-        // Open the seed labels with ImageJ
-        ImagePlus impLabels = IJTools.convertToImagePlus(seedServer, request).getImage();
-        ImageProcessor ipLabels = impLabels.getProcessor();
+        // Convert to 16-bit so the label image is compatible with the watershed and RoiLabeling
+        IJ.run(labelImage, "16-bit", "");
+        ImageProcessor labelProcessor = labelImage.getProcessor();
 
-        // Delete all existing objects
-        var seeds = hierarchy
-                .getAnnotationObjects().stream()
-                .filter(it -> it.getPathClass() == PathClass.getInstance("Seed"))
-                .toList();
-        hierarchy.removeObjects(seeds, false);
+        // Clean up seed objects from the hierarchy
+        hierarchy.removeObjects(
+                hierarchy.getAnnotationObjects().stream()
+                        .filter(it -> it.getPathClass() == PathClass.getInstance("Seed"))
+                        .toList(),
+                false);
 
-        // Apply a 2D watershed transform, constraining region growing using an intensity threshold.
-        // Parameters:
-        // ip - image containing intensity information
-        // ipLabels - image containing starting labels; these will be modified
-        // minIntensity - minimum threshold; labels will not expand into pixels with values below the threshold
-        // conn8 - true if 8-connectivity should be used; alternative is 4-connectivity
+        // Watershed: expand seed labels into the thresholded SDT region
+        Watershed.doWatershed(sdtChannel, labelProcessor, 0, true);
 
-        // Use QuPath's ImageJ-friendly Watershed class (not the general Watershed class for SimpleImage inputs)
-        double minIntensity = 0;
-        boolean conn8 = true;
-        Watershed.doWatershed(ip, ipLabels, minIntensity, conn8);
-
-        // Create detection objects from label image
-        var roiDetected = RoiLabeling.labelsToFilledRoiList(ipLabels, conn8);
-
-        // Convert ImageJ ROIs to QuPath ROIs
+        // Convert the label image back to QuPath annotation objects
+        var detectedROIs = RoiLabeling.labelsToFilledRoiList(labelProcessor, true);
         ImagePlane plane = ImagePlane.getDefaultPlane();
-        Calibration cal = imp.getCalibration();
+        Calibration calibration = prediction.getCalibration();
 
-        // Convert ImageJ ROIs to QuPath annotations
-        return roiDetected.stream().map(
-                roiIJ -> {
-                    var roi = IJTools.convertToROI(roiIJ, cal, downsample, plane);
-                    return PathObjects.createAnnotationObject(roi.translate(translateX, translateY), PathClass.getInstance(className));
+        logger.info("processSDT ({}): {} seeds → {} detected objects", className, seedObjects.size(), detectedROIs.size());
+
+        return detectedROIs.stream()
+                .map(roiIJ -> {
+                    var roi = IJTools.convertToROI(roiIJ, calibration, downsample, plane);
+                    return PathObjects.createDetectionObject(
+                            roi.translate(translateX, translateY),
+                            PathClass.getInstance(className));
                 })
                 .collect(Collectors.toSet());
     }
 
     /**
-     * Method to get a semantic channel from an image plus and return an instance segmentation in the
-     * form of QuPath objects.
+     * Performs semantic segmentation on a single channel of the model prediction,
+     * returning one annotation object per connected region with the given label value.
+     * Used for Inner Tongue prediction, which does not require watershed separation.
      */
-    static Collection<PathObject> processSemantic(ImagePlus imp, String className, int channel, int label, double downsample,
+    static Collection<PathObject> processSemantic(ImagePlus prediction, String className,
+                                                  int channel, int labelValue,
+                                                  double downsample,
                                                   double translateX, double translateY) {
-        // Create ROIs from thresholds
-        imp.setC(channel); // Set the channel index (1-based)
-        ImageProcessor ip = imp.getProcessor(); // Get the ImageProcessor of the specified channel
-        ip.setThreshold(label, label, ImageProcessor.NO_LUT_UPDATE);
-        ImageProcessor ipMask = ip.createMask(); // image processor
-        ImagePlus impMask = new ImagePlus("Binary Mask", ipMask); // image processor to image plus
+        prediction.setC(channel);
+        ImageProcessor ip = prediction.getProcessor();
+        ip.setThreshold(labelValue, labelValue, ImageProcessor.NO_LUT_UPDATE);
 
-        int optionsAddManager = ParticleAnalyzer.SHOW_MASKS + ParticleAnalyzer.ADD_TO_MANAGER + ParticleAnalyzer.COMPOSITE_ROIS;
-        int measurementsArea = Measurements.AREA;
-        ImagePlus binaryMask = analyzeParticles(impMask, optionsAddManager, measurementsArea, 0, Double.POSITIVE_INFINITY, 0, 1);
+        ImagePlus binaryMask = new ImagePlus("Binary Mask", ip.createMask());
+        int options = ParticleAnalyzer.SHOW_MASKS + ParticleAnalyzer.ADD_TO_MANAGER + ParticleAnalyzer.COMPOSITE_ROIS;
+        analyzeParticles(binaryMask, options, Measurements.AREA, 0, Double.POSITIVE_INFINITY, 0, 1);
+
         RoiManager rm = RoiManager.getInstance();
+        if (rm == null || rm.getCount() == 0) {
+            logger.info("processSemantic ({}): 0 detected objects", className);
+            return java.util.Collections.emptySet();
+        }
         rm.setVisible(false);
         var roiList = rm.getRoisAsArray();
         rm.close();
 
-        // Convert ImageJ ROIs to QuPath annotations
         ImagePlane plane = ImagePlane.getDefaultPlane();
-        Calibration cal = imp.getCalibration();
+        Calibration calibration = prediction.getCalibration();
+
+        logger.info("processSemantic ({}): {} detected objects", className, roiList.length);
 
         return Arrays.stream(roiList)
-                .map(roi -> {
-                    var roiIJ = IJTools.convertToROI(roi, cal, downsample, plane);
-                    return PathObjects.createAnnotationObject(roiIJ.translate(translateX, translateY), PathClass.getInstance(className));
+                .map(roiIJ -> {
+                    var roi = IJTools.convertToROI(roiIJ, calibration, downsample, plane);
+                    return PathObjects.createDetectionObject(
+                            roi.translate(translateX, translateY),
+                            PathClass.getInstance(className));
                 })
                 .collect(Collectors.toSet());
     }
 
-
     /**
-     * Segmentation pipeline
+     * Convenience overload that reads {@code pixel_size}, {@code min_diameter}, and
+     * {@code predict_inner_tongue} from the model's rdf.yaml and delegates to the
+     * full overload.
      */
     public static Collection<PathObject> runAimSeg(Path modelPath,
                                                    ImageData<BufferedImage> imageData,
                                                    PathObject parentObject,
-                                                   DataType dataType) throws IOException {
-        // ensure we're not creating duplicates etc
-        parentObject.getChildObjects().clear();
+                                                   double minThreshold,
+                                                   double maxThreshold,
+                                                   int channel,
+                                                   String device) throws IOException {
+        Map<String, Object> parameters = extractParametersFromYaml(modelPath.resolve("rdf.yaml"));
+        return runAimSeg(modelPath, imageData, parentObject, minThreshold, maxThreshold, channel,
+                (double) parameters.get("pixel_size"),
+                (double) parameters.get("min_diameter"),
+                (boolean) parameters.get("predict_inner_tongue"),
+                device);
+    }
 
-        // temporary path, use weights_tem.pt or weights_brightfield.pt model
-        var uri = modelPath.toUri();
-
-        // Model parameters
-        int inputWidth = 512;
-        int inputHeight = inputWidth;
-        int nChannels = 1;
-        var padding = Padding.symmetric(32);
-        var layout = "NCHW";
-        int[] inputShape = new int[] {1, nChannels, inputHeight, inputWidth};
-
-        // Image parameters
-        double targetPixelSizeMicrons = dataType == DataType.ELECTRON_MICROSCOPY ? 0.008 : 0.07;
-        double minDiameterMicrons = dataType == DataType.ELECTRON_MICROSCOPY ? 0.2 : 1.0;
-        double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, true);
-
-        // Post-processing parameters
-        double minThreshold = 0.7;
-        double maxThreshold = 1;
-
-        // Get an ImageJ representation of the output
-        ImagePlus impOutput;
-
-        // Use a selected annotation if we have one, otherwise request pixels for the full image
-        var server = imageData.getServer();
-        var roi = parentObject.getROI();
-        double translateX = roi.getBoundsX();
-        double translateY = roi.getBoundsY();
-        RegionRequest request = RegionRequest.createInstance(server.getPath(), downsample, roi);
-
-        // Run model on the specified image region
-        impOutput = modelInference(uri, layout, inputWidth, inputHeight, padding, inputShape, imageData, server, request);
-
-        // Instance segmentation on model prediction
-        var fibres = processSDT(impOutput, imageData.getHierarchy(), dataType, targetPixelSizeMicrons, minDiameterMicrons,
-                "Fibre", 2, minThreshold, maxThreshold, downsample, imageData, request, translateX, translateY);
-//        imageData.getHierarchy().addObjects(fibres);
-        var axons = processSDT(impOutput, imageData.getHierarchy(), dataType, targetPixelSizeMicrons, minDiameterMicrons,
-                "Axon", 3, minThreshold, maxThreshold, downsample, imageData, request, translateX, translateY);
-//        imageData.getHierarchy().addObjects(axons);
-        Collection<PathObject> tongues = List.of();
-        if (dataType == DataType.ELECTRON_MICROSCOPY) {
-            tongues = processSemantic(impOutput, "Inner Tongue", 1, 2, downsample, translateX, translateY);
-//            imageData.getHierarchy().addObjects(tongues);
+    /**
+     * Main AimSeg segmentation pipeline.
+     * <p>
+     * Runs inference on the region covered by {@code parentObject}, post-processes
+     * the prediction into QuPath detection objects, builds the object hierarchy, and
+     * computes morphometric features on the resulting fibres.
+     *
+     * @param modelPath          path to the BioImage.IO model directory (must contain weights.pt and rdf.yaml)
+     * @param imageData          the current QuPath image data
+     * @param parentObject       the annotation defining the region to process
+     * @param minThreshold       minimum threshold for SDT-based instance segmentation
+     * @param maxThreshold       maximum threshold for SDT-based instance segmentation
+     * @param channel            image channel to use for inference (1-based)
+     * @param pixelSize          target pixel size in microns
+     * @param minDiameter        minimum object diameter in pixels for seed filtering
+     * @param predictInnerTongue whether to predict inner tongue structures
+     * @return all objects created by the pipeline (fibres, axons, and optionally inner tongues)
+     */
+    public static Collection<PathObject> runAimSeg(Path modelPath,
+                                                   ImageData<BufferedImage> imageData,
+                                                   PathObject parentObject,
+                                                   double minThreshold,
+                                                   double maxThreshold,
+                                                   int channel,
+                                                   double pixelSize,
+                                                   double minDiameter,
+                                                   boolean predictInnerTongue,
+                                                   String device) throws IOException {
+        var hierarchy = imageData.getHierarchy();
+        if (!parentObject.getChildObjects().isEmpty()) {
+            var allDescendants = HierarchyTools.getAllDescendants(parentObject);
+            hierarchy.removeObjects(allDescendants, false);
         }
 
-        HierarchyTools.updateHierarchy(imageData.getHierarchy(), parentObject, fibres, axons, tongues, dataType);
+        double targetPixelSizeMicrons = pixelSize;
+        double minDiameterPixels = minDiameter;
+        boolean predictInnerTongueFlag = predictInnerTongue;
 
-        // lock selected annotation
+        logger.info("Model parameters: pixel_size={} µm, min_diameter={} px, predict_inner_tongue={}",
+                targetPixelSizeMicrons, minDiameterPixels, predictInnerTongueFlag);
+
+        double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, false);
+        logger.info("Downsample factor: {}", downsample);
+
+        // Define the region to process based on the parent annotation and selected channel
+        var server = imageData.getServer();
+        var parentROI = parentObject.getROI();
+        double translateX = parentROI.getBoundsX();
+        double translateY = parentROI.getBoundsY();
+        RegionRequest request = RegionRequest.createInstance(server.getPath(), downsample, parentROI);
+
+        logger.info("Processing region: x={}, y={}, w={}, h={}",
+                parentROI.getBoundsX(), parentROI.getBoundsY(),
+                parentROI.getBoundsWidth(), parentROI.getBoundsHeight());
+
+        // Run model inference
+        int[] inputShape = new int[]{1, 1, 512, 512};
+        ImagePlus prediction = modelInference(
+                modelPath.resolve("weights.pt").toUri(),
+                "NCHW", 512, 512, Padding.symmetric(32), inputShape,
+                imageData, server, request, channel, device);
+
+        // Post-process prediction channels into QuPath objects
+        var fibres = processSDT(prediction, imageData.getHierarchy(), "Fibre", 2,
+                minThreshold, maxThreshold, downsample, minDiameterPixels,
+                imageData, request, translateX, translateY);
+
+        var axons = processSDT(prediction, imageData.getHierarchy(), "Axon", 3,
+                minThreshold, maxThreshold, downsample, minDiameterPixels,
+                imageData, request, translateX, translateY);
+
+        Collection<PathObject> innerTongues = List.of();
+        if (predictInnerTongueFlag) {
+            innerTongues = processSemantic(prediction, "Inner Tongue", 1, 2,
+                    downsample, translateX, translateY);
+        }
+
+        logger.info("Detected: {} fibres, {} axons, {} inner tongues",
+                fibres.size(), axons.size(), innerTongues.size());
+
+        // Build hierarchy and compute morphometric features
+        HierarchyTools.updateHierarchy(imageData.getHierarchy(), parentObject, fibres, axons, innerTongues);
+
+        var validFibres = parentObject.getChildObjects().stream()
+                .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
+                .toList();
+        QuantificationTools.computeFeatures(imageData, validFibres);
+
         if (!parentObject.isLocked()) {
             parentObject.setLocked(true);
         }
-        return Stream.of(fibres.stream(), axons.stream(), tongues.stream())
-                .flatMap(s -> s) // flattening multiple collections into one
+
+        return Stream.of(fibres.stream(), axons.stream(), innerTongues.stream())
+                .flatMap(s -> s)
                 .collect(Collectors.toSet());
-    }
-
-    public enum DataType {
-        BRIGHTFIELD,
-        ELECTRON_MICROSCOPY
-    }
-
-    public enum TissueType {
-        CENTRAL_NERVOUS_SYSTEM,
-        PERIPHERAL_NERVOUS_SYSTEM
     }
 }
