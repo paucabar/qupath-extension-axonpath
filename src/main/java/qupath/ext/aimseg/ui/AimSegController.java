@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ResourceBundle;
+import javafx.application.Platform;
 import javafx.beans.property.StringProperty;
 import javafx.concurrent.Task;
 import javafx.fxml.FXML;
@@ -29,6 +30,7 @@ import qupath.fx.dialogs.Dialogs;
 import qupath.fx.dialogs.FileChoosers;
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.List;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.prefs.PathPrefs;
 import qupath.lib.objects.PathObject;
@@ -123,7 +125,7 @@ public class AimSegController extends BorderPane {
     }
 
     @FXML
-    private void runAimSeg() throws IOException {
+    private void runAimSeg() {
         Path modelPath = modelChoiceBox.getSelectionModel().getSelectedItem();
         if (modelPath == null) {
             Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-model"));
@@ -152,26 +154,54 @@ public class AimSegController extends BorderPane {
             return;
         }
         boolean predictInnerTongue = predictInnerTongueCheckBox.isSelected();
+        final double finalPixelSize = pixelSize;
+        final double finalMinDiameter = minDiameter;
 
-        int total = selectedObjects.size();
-        int totalObjects = 0;
-        for (int i = 0; i < total; i++) {
-            setStatusLabel(MessageFormat.format(resources.getString("ui.run.progress"), i + 1, total));
-            var pathObjects = PredictionTools.runAimSeg(
-                    modelPath, QP.getCurrentImageData(), selectedObjects.get(i), 0.5, 1,
-                    getSelectedChannel(), pixelSize, minDiameter, predictInnerTongue, getDevice());
-            totalObjects += pathObjects.size();
-        }
-        logger.info("{} total objects created by AimSeg", totalObjects);
+        setStatusLabel(MessageFormat.format(
+                resources.getString("ui.run.progress"), 1, selectedObjects.size()));
+        runInferenceStep(selectedObjects, 0, modelPath, finalPixelSize, finalMinDiameter,
+                predictInnerTongue, new int[]{0});
+    }
 
-        var allFibres = selectedObjects.stream()
+    /**
+     * Processes one parent object per FX pulse, yielding between each so the status
+     * label repaints visibly. All hierarchy modifications stay on the FX thread.
+     */
+    private void runInferenceStep(List<PathObject> parents, int index,
+                                  Path modelPath, double pixelSize, double minDiameter,
+                                  boolean predictInnerTongue, int[] totalObjects) {
+        Platform.runLater(() -> {
+            try {
+                var result = PredictionTools.runAimSeg(
+                        modelPath, QP.getCurrentImageData(), parents.get(index), 0.5, 1,
+                        getSelectedChannel(), pixelSize, minDiameter, predictInnerTongue, getDevice());
+                totalObjects[0] += result.size();
+            } catch (IOException e) {
+                logger.error("AimSeg inference failed for parent {}", index, e);
+                Dialogs.showErrorMessage("AimSeg extension", e.getMessage());
+                onInferenceComplete(parents, totalObjects);
+                return;
+            }
+            int next = index + 1;
+            if (next < parents.size()) {
+                setStatusLabel(MessageFormat.format(
+                        resources.getString("ui.run.progress"), next + 1, parents.size()));
+                runInferenceStep(parents, next, modelPath, pixelSize, minDiameter,
+                        predictInnerTongue, totalObjects);
+            } else {
+                onInferenceComplete(parents, totalObjects);
+            }
+        });
+    }
+
+    private void onInferenceComplete(List<PathObject> parents, int[] totalObjects) {
+        logger.info("{} total objects created by AimSeg", totalObjects[0]);
+        var allFibres = parents.stream()
                 .flatMap(p -> p.getChildObjects().stream())
                 .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
                 .toList();
-        if (allFibres.isEmpty()) {
+        if (allFibres.isEmpty())
             Dialogs.showWarningNotification("AimSeg extension", resources.getString("ui.error.no-valid-fibres"));
-        }
-
         refreshPostProcessingButtons();
         refreshStatusLabel();
     }
