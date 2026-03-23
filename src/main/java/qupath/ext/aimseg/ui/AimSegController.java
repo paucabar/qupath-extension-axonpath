@@ -34,6 +34,8 @@ import qupath.lib.gui.prefs.PathPrefs;
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.PathObjects;
 import qupath.lib.objects.classes.PathClass;
+import qupath.lib.regions.ImagePlane;
+import qupath.lib.roi.ROIs;
 import qupath.lib.scripting.QP;
 import javafx.fxml.FXMLLoader;
 
@@ -281,6 +283,23 @@ public class AimSegController extends BorderPane {
     }
 
     @FXML
+    private void annotateWholeImage() {
+        var imageData = QP.getCurrentImageData();
+        if (imageData == null) return;
+        var server = imageData.getServer();
+        var hierarchy = imageData.getHierarchy();
+        int nZ = server.nZSlices();
+        var annotations = new ArrayList<PathObject>();
+        for (int z = 0; z < nZ; z++) {
+            var roi = ROIs.createRectangleROI(0, 0, server.getWidth(), server.getHeight(),
+                    ImagePlane.getPlane(z, 0));
+            annotations.add(PathObjects.createAnnotationObject(roi));
+        }
+        hierarchy.addObjects(annotations);
+        hierarchy.getSelectionModel().setSelectedObjects(annotations, annotations.get(0));
+    }
+
+    @FXML
     private void chooseModel() {
         File dir = FileChoosers.promptForDirectory();
         if (dir == null) return;
@@ -293,6 +312,14 @@ public class AimSegController extends BorderPane {
         var imageData = QP.getCurrentImageData();
         if (imageData == null) {
             Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-image"));
+            return;
+        }
+        boolean hasTraceableFibres = imageData.getHierarchy().getFlattenedObjectList(null).stream()
+                .anyMatch(o -> o.getPathClass() == PathClass.getInstance("Fibre")
+                        && o.isDetection()
+                        && !o.getChildObjects().isEmpty());
+        if (!hasTraceableFibres) {
+            Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-traceable-fibres"));
             return;
         }
         double minOverlap = minOverlapSpinner.getValue();
