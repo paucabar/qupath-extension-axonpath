@@ -1,6 +1,7 @@
 package qupath.ext.aimseg.core;
 
 import org.locationtech.jts.geom.Geometry;
+import org.locationtech.jts.index.strtree.STRtree;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.lib.common.ColorTools;
@@ -66,11 +67,11 @@ public class TracingTools {
                     annotationCount);
         }
 
-        // Group fibres by z-plane
-        Map<Integer, List<PathObject>> byZ = new TreeMap<>();
+        // Group fibres by z-plane, pre-computing geometries once per fibre
+        Map<Integer, List<FibreEntry>> byZ = new TreeMap<>();
         for (var fibre : allFibres) {
             int z = fibre.getROI().getImagePlane().getZ();
-            byZ.computeIfAbsent(z, k -> new ArrayList<>()).add(fibre);
+            byZ.computeIfAbsent(z, k -> new ArrayList<>()).add(new FibreEntry(fibre, fibre.getROI().getGeometry()));
         }
 
         List<Integer> zSlices = new ArrayList<>(byZ.keySet());
@@ -81,22 +82,29 @@ public class TracingTools {
         int nextId = 1;
 
         // Assign IDs on the first slice
-        List<PathObject> prevSlice = byZ.get(zSlices.get(0));
-        for (var fibre : prevSlice) {
-            idMap.put(fibre, nextId++);
+        List<FibreEntry> prevSlice = byZ.get(zSlices.get(0));
+        for (var entry : prevSlice) {
+            idMap.put(entry.fibre(), nextId++);
         }
 
         // Match consecutive slices
         for (int i = 1; i < zSlices.size(); i++) {
-            List<PathObject> currSlice = byZ.get(zSlices.get(i));
+            List<FibreEntry> currSlice = byZ.get(zSlices.get(i));
 
-            // Build all candidate pairs above threshold
+            // Build spatial index over curr slice for fast candidate lookup
+            STRtree tree = new STRtree();
+            for (int c = 0; c < currSlice.size(); c++) {
+                tree.insert(currSlice.get(c).geometry().getEnvelopeInternal(), c);
+            }
+
+            // For each prev fibre, query only spatially nearby curr fibres
             List<double[]> candidates = new ArrayList<>(); // [iou, prevIdx, currIdx]
             for (int p = 0; p < prevSlice.size(); p++) {
-                Geometry gPrev = prevSlice.get(p).getROI().getGeometry();
-                for (int c = 0; c < currSlice.size(); c++) {
-                    Geometry gCurr = currSlice.get(c).getROI().getGeometry();
-                    double iou = computeIoU(gPrev, gCurr);
+                Geometry gPrev = prevSlice.get(p).geometry();
+                @SuppressWarnings("unchecked")
+                List<Integer> nearby = tree.query(gPrev.getEnvelopeInternal());
+                for (int c : nearby) {
+                    double iou = computeIoU(gPrev, currSlice.get(c).geometry());
                     if (iou >= minOverlap) {
                         candidates.add(new double[]{iou, p, c});
                     }
@@ -113,8 +121,7 @@ public class TracingTools {
                 int p = (int) row[1];
                 int c = (int) row[2];
                 if (usedPrev.contains(p) || usedCurr.contains(c)) continue;
-                // Match: propagate ID from prev to curr
-                idMap.put(currSlice.get(c), idMap.get(prevSlice.get(p)));
+                idMap.put(currSlice.get(c).fibre(), idMap.get(prevSlice.get(p).fibre()));
                 usedPrev.add(p);
                 usedCurr.add(c);
             }
@@ -122,7 +129,7 @@ public class TracingTools {
             // Assign new IDs to unmatched fibres on curr slice
             for (int c = 0; c < currSlice.size(); c++) {
                 if (!usedCurr.contains(c)) {
-                    idMap.put(currSlice.get(c), nextId++);
+                    idMap.put(currSlice.get(c).fibre(), nextId++);
                 }
             }
 
@@ -145,6 +152,9 @@ public class TracingTools {
         logger.info("traceAxons: assigned {} unique Axon IDs across {} fibres", nextId - 1, idMap.size());
         hierarchy.fireObjectMeasurementsChangedEvent(TracingTools.class, allFibres);
     }
+
+    /** Immutable pair of a fibre object and its pre-computed JTS geometry. */
+    private record FibreEntry(PathObject fibre, Geometry geometry) {}
 
     /**
      * Returns a deterministic packed RGB color for the given Axon ID.
