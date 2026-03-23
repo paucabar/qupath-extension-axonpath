@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ResourceBundle;
 import javafx.beans.property.StringProperty;
+import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
@@ -16,6 +17,7 @@ import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
 import org.controlsfx.control.SearchableComboBox;
+import org.controlsfx.dialog.ProgressDialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.aimseg.core.HierarchyTools;
@@ -25,6 +27,8 @@ import qupath.ext.aimseg.core.QuantificationTools;
 import qupath.ext.aimseg.core.TracingTools;
 import qupath.fx.dialogs.Dialogs;
 import qupath.fx.dialogs.FileChoosers;
+import java.text.MessageFormat;
+import java.util.ArrayList;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.prefs.PathPrefs;
 import qupath.lib.objects.PathObject;
@@ -131,8 +135,8 @@ public class AimSegController extends BorderPane {
             Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-image"));
             return;
         }
-        var selectedObjects = QP.getSelectedObjects();
-        if (selectedObjects == null || selectedObjects.isEmpty()) {
+        var selectedObjects = new ArrayList<>(QP.getSelectedObjects());
+        if (selectedObjects.isEmpty()) {
             Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-selection"));
             return;
         }
@@ -147,10 +151,12 @@ public class AimSegController extends BorderPane {
         }
         boolean predictInnerTongue = predictInnerTongueCheckBox.isSelected();
 
+        int total = selectedObjects.size();
         int totalObjects = 0;
-        for (var parentObject : selectedObjects) {
+        for (int i = 0; i < total; i++) {
+            setStatusLabel(MessageFormat.format(resources.getString("ui.run.progress"), i + 1, total));
             var pathObjects = PredictionTools.runAimSeg(
-                    modelPath, QP.getCurrentImageData(), parentObject, 0.5, 1,
+                    modelPath, QP.getCurrentImageData(), selectedObjects.get(i), 0.5, 1,
                     getSelectedChannel(), pixelSize, minDiameter, predictInnerTongue, getDevice());
             totalObjects += pathObjects.size();
         }
@@ -165,6 +171,7 @@ public class AimSegController extends BorderPane {
         }
 
         refreshPostProcessingButtons();
+        refreshStatusLabel();
     }
 
     @FXML
@@ -289,7 +296,31 @@ public class AimSegController extends BorderPane {
             return;
         }
         double minOverlap = minOverlapSpinner.getValue();
-        TracingTools.traceAxons(imageData, minOverlap);
+
+        var task = new Task<Void>() {
+            @Override
+            protected Void call() {
+                TracingTools.traceAxons(imageData, minOverlap, p -> updateProgress(p, 1.0));
+                return null;
+            }
+        };
+
+        var dialog = new ProgressDialog(task);
+        dialog.setTitle("AimSeg");
+        dialog.setHeaderText(resources.getString("ui.tracing.progress.header"));
+
+        task.setOnSucceeded(e -> dialog.close());
+        task.setOnFailed(e -> {
+            logger.error("Axon tracing failed", task.getException());
+            Dialogs.showErrorMessage("AimSeg extension",
+                    task.getException() != null ? task.getException().getMessage() : "Unexpected error");
+            dialog.close();
+        });
+
+        Thread thread = new Thread(task, "aimseg-tracing");
+        thread.setDaemon(true);
+        thread.start();
+        dialog.showAndWait();
     }
 
     private void configureMinOverlapSpinner() {
@@ -415,6 +446,15 @@ public class AimSegController extends BorderPane {
         boolean hasSelection = selected != null && !selected.isEmpty();
         labelMessage.setVisible(!hasSelection);
         labelMessage.setManaged(!hasSelection);
+        if (!hasSelection) {
+            labelMessage.setText(resources.getString("ui.status.no-selection"));
+        }
+    }
+
+    private void setStatusLabel(String text) {
+        labelMessage.setText(text);
+        labelMessage.setVisible(true);
+        labelMessage.setManaged(true);
     }
 
     /**

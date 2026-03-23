@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.DoubleConsumer;
 
 /**
  * Tools for tracing axons across z-slices of a 3D image stack.
@@ -40,9 +41,20 @@ public class TracingTools {
      *
      * @param imageData  the current image data
      * @param minOverlap minimum IoU threshold to consider two fibres the same across slices (0–1)
-     * @throws IllegalStateException if all fibres are annotations rather than detections
      */
     public static void traceAxons(ImageData<?> imageData, double minOverlap) {
+        traceAxons(imageData, minOverlap, null);
+    }
+
+    /**
+     * Assigns "Axon ID" measurements to all Fibre detections (with at least one child) across
+     * z-slices, matching fibres between consecutive slices using a greedy IoU-based strategy.
+     *
+     * @param imageData  the current image data
+     * @param minOverlap minimum IoU threshold to consider two fibres the same across slices (0–1)
+     * @param onProgress called after each slice pair with a value in [0, 1]; may be null
+     */
+    public static void traceAxons(ImageData<?> imageData, double minOverlap, DoubleConsumer onProgress) {
         var hierarchy = imageData.getHierarchy();
 
         // Collect all Fibre detections with at least one child
@@ -134,6 +146,10 @@ public class TracingTools {
             }
 
             prevSlice = currSlice;
+
+            if (onProgress != null) {
+                onProgress.accept((double) i / (zSlices.size() - 1));
+            }
         }
 
         // Write measurements and colors to each fibre and all its descendants
@@ -150,6 +166,7 @@ public class TracingTools {
         }
 
         logger.info("traceAxons: assigned {} unique Axon IDs across {} fibres", nextId - 1, idMap.size());
+        hierarchy.fireObjectClassificationsChangedEvent(TracingTools.class, allFibres);
         hierarchy.fireObjectMeasurementsChangedEvent(TracingTools.class, allFibres);
     }
 
