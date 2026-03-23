@@ -54,6 +54,8 @@ public class AimSegController extends BorderPane {
     private CheckBox predictInnerTongueCheckBox;
     @FXML
     private Button resetParamsButton;
+    @FXML
+    private Label labelMessage;
 
     private double defaultPixelSize;
     private double defaultMinDiameter;
@@ -92,6 +94,7 @@ public class AimSegController extends BorderPane {
             @Override
             public void selectedObjectChanged(qupath.lib.gui.viewer.QuPathViewer viewer, PathObject pathObjectSelected) {
                 refreshPostProcessingButtons();
+                refreshStatusLabel();
             }
             @Override
             public void visibleRegionChanged(qupath.lib.gui.viewer.QuPathViewer viewer, java.awt.Shape shape) {}
@@ -101,6 +104,7 @@ public class AimSegController extends BorderPane {
             public void viewerClosed(qupath.lib.gui.viewer.QuPathViewer viewer) {}
         });
         refreshPostProcessingButtons();
+        refreshStatusLabel();
     }
 
     @FXML
@@ -371,6 +375,13 @@ public class AimSegController extends BorderPane {
 
         convertToAnnotationsButton.setDisable(!hasAimSegDetections);
         recomputeButton.setDisable(!hasAimSegAnnotations);
+    }
+
+    private void refreshStatusLabel() {
+        var selected = QP.getSelectedObjects();
+        boolean hasSelection = selected != null && !selected.isEmpty();
+        labelMessage.setVisible(!hasSelection);
+        labelMessage.setManaged(!hasSelection);
     }
 
     /**

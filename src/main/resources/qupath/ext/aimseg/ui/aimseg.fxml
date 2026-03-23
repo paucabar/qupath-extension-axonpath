@@ -137,7 +137,7 @@
                                     <tooltip><Tooltip text="%ui.run.tooltip" /></tooltip>
                                 </Button>
                             </HBox>
-                            <Label fx:id="labelMessage" styleClass="error-message" text="%ui.error.no-selection" VBox.vgrow="ALWAYS" />
+                            <Label fx:id="labelMessage" styleClass="error-message" text="%ui.status.no-selection" visible="false" managed="false" VBox.vgrow="ALWAYS" />
                         </VBox>
 
                     </children>
