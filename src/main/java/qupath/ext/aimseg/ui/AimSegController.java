@@ -11,6 +11,8 @@ import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.Spinner;
+import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
 import org.controlsfx.control.SearchableComboBox;
@@ -20,6 +22,7 @@ import qupath.ext.aimseg.core.HierarchyTools;
 import qupath.ext.aimseg.core.PredictionTools;
 import qupath.ext.aimseg.core.PytorchManager;
 import qupath.ext.aimseg.core.QuantificationTools;
+import qupath.ext.aimseg.core.TracingTools;
 import qupath.fx.dialogs.Dialogs;
 import qupath.fx.dialogs.FileChoosers;
 import qupath.lib.gui.QuPathGUI;
@@ -56,6 +59,10 @@ public class AimSegController extends BorderPane {
     private Button resetParamsButton;
     @FXML
     private Label labelMessage;
+    @FXML
+    private Spinner<Double> minOverlapSpinner;
+    @FXML
+    private Button traceAxonsButton;
 
     private double defaultPixelSize;
     private double defaultMinDiameter;
@@ -63,6 +70,7 @@ public class AimSegController extends BorderPane {
 
     private final StringProperty modelDir = PathPrefs.createPersistentPreference("aimseg.model.dir", null);
     private final StringProperty preferredDevice = PathPrefs.createPersistentPreference("aimseg.inference.device", null);
+    private final StringProperty minOverlapPref = PathPrefs.createPersistentPreference("aimseg.tracing.min.overlap", "0.5");
 
     public static AimSegController createInstance() throws IOException {
         return new AimSegController();
@@ -75,6 +83,7 @@ public class AimSegController extends BorderPane {
         loader.setController(this);
         loader.load();
         configureDevices();
+        configureMinOverlapSpinner();
         refreshModels(modelDir.get());
 
         // Refresh model params when selection changes
@@ -270,6 +279,30 @@ public class AimSegController extends BorderPane {
         if (dir == null) return;
         modelDir.set(dir.toString());
         refreshModels(modelDir.get());
+    }
+
+    @FXML
+    private void traceAxons() {
+        var imageData = QP.getCurrentImageData();
+        if (imageData == null) {
+            Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-image"));
+            return;
+        }
+        double minOverlap = minOverlapSpinner.getValue();
+        TracingTools.traceAxons(imageData, minOverlap);
+    }
+
+    private void configureMinOverlapSpinner() {
+        double initial;
+        try {
+            initial = Double.parseDouble(minOverlapPref.get());
+        } catch (NumberFormatException e) {
+            initial = 0.5;
+        }
+        var valueFactory = new SpinnerValueFactory.DoubleSpinnerValueFactory(0.0, 1.0, initial, 0.05);
+        minOverlapSpinner.setValueFactory(valueFactory);
+        minOverlapSpinner.valueProperty().addListener((obs, oldVal, newVal) ->
+                minOverlapPref.set(String.valueOf(newVal)));
     }
 
     private void configureDevices() {
