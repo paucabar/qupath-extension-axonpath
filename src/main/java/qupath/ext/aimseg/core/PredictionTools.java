@@ -158,6 +158,17 @@ public class PredictionTools {
     }
 
     /**
+     * Returns a new collection where every object's ROI has its holes filled.
+     * Creates new detection objects; original objects are not modified.
+     */
+    private static Collection<PathObject> fillHoles(Collection<PathObject> objects) {
+        return objects.stream()
+                .map(o -> PathObjects.createDetectionObject(
+                        RoiTools.fillHoles(o.getROI()), o.getPathClass()))
+                .toList();
+    }
+
+    /**
      * Runs ImageJ's Particle Analyzer on a binary image.
      * Always returns an output ImagePlus with a standard (non-inverted) LUT.
      */
@@ -425,6 +436,11 @@ public class PredictionTools {
 
         logger.info("Detected: {} fibres, {} axons, {} inner tongues",
                 fibres.size(), axons.size(), innerTongues.size());
+
+        // Fill holes in all detected ROIs before building the hierarchy
+        fibres = fillHoles(fibres);
+        axons = fillHoles(axons);
+        innerTongues = fillHoles(innerTongues);
 
         // Build hierarchy and compute morphometric features
         HierarchyTools.updateHierarchy(imageData.getHierarchy(), parentObject, fibres, axons, innerTongues);
