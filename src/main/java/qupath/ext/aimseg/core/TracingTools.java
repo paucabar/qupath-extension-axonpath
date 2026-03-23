@@ -3,14 +3,14 @@ package qupath.ext.aimseg.core;
 import org.locationtech.jts.geom.Geometry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import qupath.lib.common.ColorTools;
 import qupath.lib.images.ImageData;
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.classes.PathClass;
-import qupath.lib.regions.ImagePlane;
 
+import java.awt.Color;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -129,18 +129,31 @@ public class TracingTools {
             prevSlice = currSlice;
         }
 
-        // Write measurements to each fibre and all its descendants
+        // Write measurements and colors to each fibre and all its descendants
         for (var entry : idMap.entrySet()) {
             PathObject fibre = entry.getKey();
             int axonId = entry.getValue();
+            int color = colorForId(axonId);
             fibre.getMeasurementList().put(AXON_ID_MEASUREMENT, axonId);
+            fibre.setColor(color);
             for (var descendant : HierarchyTools.getAllDescendants(fibre)) {
                 descendant.getMeasurementList().put(AXON_ID_MEASUREMENT, axonId);
+                descendant.setColor(color);
             }
         }
 
         logger.info("traceAxons: assigned {} unique Axon IDs across {} fibres", nextId - 1, idMap.size());
         hierarchy.fireObjectMeasurementsChangedEvent(TracingTools.class, allFibres);
+    }
+
+    /**
+     * Returns a deterministic packed RGB color for the given Axon ID.
+     * Uses golden-ratio hue spacing so consecutive IDs have maximally distinct colors.
+     */
+    private static int colorForId(int axonId) {
+        float hue = (axonId * 0.618033988749895f) % 1.0f;
+        int rgb = Color.HSBtoRGB(hue, 0.75f, 0.95f);
+        return ColorTools.packRGB((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
     }
 
     private static double computeIoU(Geometry a, Geometry b) {
