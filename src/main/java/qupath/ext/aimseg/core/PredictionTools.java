@@ -158,6 +158,17 @@ public class PredictionTools {
     }
 
     /**
+     * Returns a new collection where every object's ROI has its holes filled.
+     * Creates new detection objects; original objects are not modified.
+     */
+    private static Collection<PathObject> fillHoles(Collection<PathObject> objects) {
+        return objects.stream()
+                .map(o -> PathObjects.createDetectionObject(
+                        RoiTools.fillHoles(o.getROI()), o.getPathClass()))
+                .toList();
+    }
+
+    /**
      * Runs ImageJ's Particle Analyzer on a binary image.
      * Always returns an output ImagePlus with a standard (non-inverted) LUT.
      */
@@ -248,12 +259,29 @@ public class PredictionTools {
                         .toList(),
                 false);
 
-        // Watershed: expand seed labels into the thresholded SDT region
-        Watershed.doWatershed(sdtChannel, labelProcessor, 0, true);
+        // Watershed: expand seed labels into the thresholded SDT region.
+        // sdtChannel (model output) and labelProcessor (LabeledImageServer rendering) may differ
+        // by 1 pixel due to rounding at non-integer downsample factors. A mismatch causes an
+        // ArrayIndexOutOfBoundsException inside Watershed. Resize sdtChannel to match if needed.
+        if (sdtChannel.getWidth() != labelProcessor.getWidth() ||
+                sdtChannel.getHeight() != labelProcessor.getHeight()) {
+            logger.warn("processSDT ({}): SDT size {}×{} ≠ label size {}×{}, resizing SDT to match",
+                    className, sdtChannel.getWidth(), sdtChannel.getHeight(),
+                    labelProcessor.getWidth(), labelProcessor.getHeight());
+            sdtChannel.setInterpolationMethod(ImageProcessor.BILINEAR);
+            sdtChannel = sdtChannel.resize(labelProcessor.getWidth(), labelProcessor.getHeight(), true);
+        }
+        try {
+            Watershed.doWatershed(sdtChannel, labelProcessor, 0, true);
+        } catch (ArrayIndexOutOfBoundsException e) {
+            logger.warn("processSDT ({}): watershed failed due to image boundary condition ({}x{}), returning empty result",
+                    className, sdtChannel.getWidth(), sdtChannel.getHeight());
+            return java.util.Collections.emptySet();
+        }
 
         // Convert the label image back to QuPath annotation objects
         var detectedROIs = RoiLabeling.labelsToFilledRoiList(labelProcessor, true);
-        ImagePlane plane = ImagePlane.getDefaultPlane();
+        ImagePlane plane = request.getImagePlane();
         Calibration calibration = prediction.getCalibration();
 
         logger.info("processSDT ({}): {} seeds → {} detected objects", className, seedObjects.size(), detectedROIs.size());
@@ -276,7 +304,8 @@ public class PredictionTools {
     static Collection<PathObject> processSemantic(ImagePlus prediction, String className,
                                                   int channel, int labelValue,
                                                   double downsample,
-                                                  double translateX, double translateY) {
+                                                  double translateX, double translateY,
+                                                  ImagePlane plane) {
         prediction.setC(channel);
         ImageProcessor ip = prediction.getProcessor();
         ip.setThreshold(labelValue, labelValue, ImageProcessor.NO_LUT_UPDATE);
@@ -294,7 +323,6 @@ public class PredictionTools {
         var roiList = rm.getRoisAsArray();
         rm.close();
 
-        ImagePlane plane = ImagePlane.getDefaultPlane();
         Calibration calibration = prediction.getCalibration();
 
         logger.info("processSemantic ({}): {} detected objects", className, roiList.length);
@@ -403,11 +431,16 @@ public class PredictionTools {
         Collection<PathObject> innerTongues = List.of();
         if (predictInnerTongueFlag) {
             innerTongues = processSemantic(prediction, "Inner Tongue", 1, 2,
-                    downsample, translateX, translateY);
+                    downsample, translateX, translateY, request.getImagePlane());
         }
 
         logger.info("Detected: {} fibres, {} axons, {} inner tongues",
                 fibres.size(), axons.size(), innerTongues.size());
+
+        // Fill holes in all detected ROIs before building the hierarchy
+        fibres = fillHoles(fibres);
+        axons = fillHoles(axons);
+        innerTongues = fillHoles(innerTongues);
 
         // Build hierarchy and compute morphometric features
         HierarchyTools.updateHierarchy(imageData.getHierarchy(), parentObject, fibres, axons, innerTongues);

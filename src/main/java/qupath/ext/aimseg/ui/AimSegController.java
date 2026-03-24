@@ -5,28 +5,39 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ResourceBundle;
+import javafx.application.Platform;
 import javafx.beans.property.StringProperty;
+import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.Spinner;
+import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
 import org.controlsfx.control.SearchableComboBox;
+import org.controlsfx.dialog.ProgressDialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.aimseg.core.HierarchyTools;
 import qupath.ext.aimseg.core.PredictionTools;
 import qupath.ext.aimseg.core.PytorchManager;
 import qupath.ext.aimseg.core.QuantificationTools;
+import qupath.ext.aimseg.core.TracingTools;
 import qupath.fx.dialogs.Dialogs;
 import qupath.fx.dialogs.FileChoosers;
+import java.text.MessageFormat;
+import java.util.ArrayList;
+import java.util.List;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.prefs.PathPrefs;
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.PathObjects;
 import qupath.lib.objects.classes.PathClass;
+import qupath.lib.regions.ImagePlane;
+import qupath.lib.roi.ROIs;
 import qupath.lib.scripting.QP;
 import javafx.fxml.FXMLLoader;
 
@@ -54,6 +65,12 @@ public class AimSegController extends BorderPane {
     private CheckBox predictInnerTongueCheckBox;
     @FXML
     private Button resetParamsButton;
+    @FXML
+    private Label labelMessage;
+    @FXML
+    private Spinner<Double> minOverlapSpinner;
+    @FXML
+    private Button traceAxonsButton;
 
     private double defaultPixelSize;
     private double defaultMinDiameter;
@@ -61,6 +78,7 @@ public class AimSegController extends BorderPane {
 
     private final StringProperty modelDir = PathPrefs.createPersistentPreference("aimseg.model.dir", null);
     private final StringProperty preferredDevice = PathPrefs.createPersistentPreference("aimseg.inference.device", null);
+    private final StringProperty minOverlapPref = PathPrefs.createPersistentPreference("aimseg.tracing.min.overlap", "0.5");
 
     public static AimSegController createInstance() throws IOException {
         return new AimSegController();
@@ -73,6 +91,7 @@ public class AimSegController extends BorderPane {
         loader.setController(this);
         loader.load();
         configureDevices();
+        configureMinOverlapSpinner();
         refreshModels(modelDir.get());
 
         // Refresh model params when selection changes
@@ -92,6 +111,7 @@ public class AimSegController extends BorderPane {
             @Override
             public void selectedObjectChanged(qupath.lib.gui.viewer.QuPathViewer viewer, PathObject pathObjectSelected) {
                 refreshPostProcessingButtons();
+                refreshStatusLabel();
             }
             @Override
             public void visibleRegionChanged(qupath.lib.gui.viewer.QuPathViewer viewer, java.awt.Shape shape) {}
@@ -101,10 +121,11 @@ public class AimSegController extends BorderPane {
             public void viewerClosed(qupath.lib.gui.viewer.QuPathViewer viewer) {}
         });
         refreshPostProcessingButtons();
+        refreshStatusLabel();
     }
 
     @FXML
-    private void runAimSeg() throws IOException {
+    private void runAimSeg() {
         Path modelPath = modelChoiceBox.getSelectionModel().getSelectedItem();
         if (modelPath == null) {
             Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-model"));
@@ -118,8 +139,8 @@ public class AimSegController extends BorderPane {
             Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-image"));
             return;
         }
-        var selectedObjects = QP.getSelectedObjects();
-        if (selectedObjects == null || selectedObjects.isEmpty()) {
+        var selectedObjects = new ArrayList<>(QP.getSelectedObjects());
+        if (selectedObjects.isEmpty()) {
             Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-selection"));
             return;
         }
@@ -133,25 +154,56 @@ public class AimSegController extends BorderPane {
             return;
         }
         boolean predictInnerTongue = predictInnerTongueCheckBox.isSelected();
+        final double finalPixelSize = pixelSize;
+        final double finalMinDiameter = minDiameter;
 
-        int totalObjects = 0;
-        for (var parentObject : selectedObjects) {
-            var pathObjects = PredictionTools.runAimSeg(
-                    modelPath, QP.getCurrentImageData(), parentObject, 0.5, 1,
-                    getSelectedChannel(), pixelSize, minDiameter, predictInnerTongue, getDevice());
-            totalObjects += pathObjects.size();
-        }
-        logger.info("{} total objects created by AimSeg", totalObjects);
+        setStatusLabel(MessageFormat.format(
+                resources.getString("ui.run.progress"), 1, selectedObjects.size()));
+        runInferenceStep(selectedObjects, 0, modelPath, finalPixelSize, finalMinDiameter,
+                predictInnerTongue, new int[]{0});
+    }
 
-        var allFibres = selectedObjects.stream()
+    /**
+     * Processes one parent object per FX pulse, yielding between each so the status
+     * label repaints visibly. All hierarchy modifications stay on the FX thread.
+     */
+    private void runInferenceStep(List<PathObject> parents, int index,
+                                  Path modelPath, double pixelSize, double minDiameter,
+                                  boolean predictInnerTongue, int[] totalObjects) {
+        Platform.runLater(() -> {
+            try {
+                var result = PredictionTools.runAimSeg(
+                        modelPath, QP.getCurrentImageData(), parents.get(index), 0.5, 1,
+                        getSelectedChannel(), pixelSize, minDiameter, predictInnerTongue, getDevice());
+                totalObjects[0] += result.size();
+            } catch (IOException e) {
+                logger.error("AimSeg inference failed for parent {}", index, e);
+                Dialogs.showErrorMessage("AimSeg extension", e.getMessage());
+                onInferenceComplete(parents, totalObjects);
+                return;
+            }
+            int next = index + 1;
+            if (next < parents.size()) {
+                setStatusLabel(MessageFormat.format(
+                        resources.getString("ui.run.progress"), next + 1, parents.size()));
+                runInferenceStep(parents, next, modelPath, pixelSize, minDiameter,
+                        predictInnerTongue, totalObjects);
+            } else {
+                onInferenceComplete(parents, totalObjects);
+            }
+        });
+    }
+
+    private void onInferenceComplete(List<PathObject> parents, int[] totalObjects) {
+        logger.info("{} total objects created by AimSeg", totalObjects[0]);
+        var allFibres = parents.stream()
                 .flatMap(p -> p.getChildObjects().stream())
                 .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
                 .toList();
-        if (allFibres.isEmpty()) {
+        if (allFibres.isEmpty())
             Dialogs.showWarningNotification("AimSeg extension", resources.getString("ui.error.no-valid-fibres"));
-        }
-
         refreshPostProcessingButtons();
+        refreshStatusLabel();
     }
 
     @FXML
@@ -261,11 +313,84 @@ public class AimSegController extends BorderPane {
     }
 
     @FXML
+    private void annotateWholeImage() {
+        var imageData = QP.getCurrentImageData();
+        if (imageData == null) return;
+        var server = imageData.getServer();
+        var hierarchy = imageData.getHierarchy();
+        int nZ = server.nZSlices();
+        var annotations = new ArrayList<PathObject>();
+        for (int z = 0; z < nZ; z++) {
+            var roi = ROIs.createRectangleROI(0, 0, server.getWidth(), server.getHeight(),
+                    ImagePlane.getPlane(z, 0));
+            annotations.add(PathObjects.createAnnotationObject(roi));
+        }
+        hierarchy.addObjects(annotations);
+        hierarchy.getSelectionModel().setSelectedObjects(annotations, annotations.get(0));
+    }
+
+    @FXML
     private void chooseModel() {
         File dir = FileChoosers.promptForDirectory();
         if (dir == null) return;
         modelDir.set(dir.toString());
         refreshModels(modelDir.get());
+    }
+
+    @FXML
+    private void traceAxons() {
+        var imageData = QP.getCurrentImageData();
+        if (imageData == null) {
+            Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-image"));
+            return;
+        }
+        boolean hasTraceableFibres = imageData.getHierarchy().getFlattenedObjectList(null).stream()
+                .anyMatch(o -> o.getPathClass() == PathClass.getInstance("Fibre")
+                        && o.isDetection()
+                        && !o.getChildObjects().isEmpty());
+        if (!hasTraceableFibres) {
+            Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-traceable-fibres"));
+            return;
+        }
+        double minOverlap = minOverlapSpinner.getValue();
+
+        var task = new Task<Void>() {
+            @Override
+            protected Void call() {
+                TracingTools.traceAxons(imageData, minOverlap, p -> updateProgress(p, 1.0));
+                return null;
+            }
+        };
+
+        var dialog = new ProgressDialog(task);
+        dialog.setTitle("AimSeg");
+        dialog.setHeaderText(resources.getString("ui.tracing.progress.header"));
+
+        task.setOnSucceeded(e -> dialog.close());
+        task.setOnFailed(e -> {
+            logger.error("Axon tracing failed", task.getException());
+            Dialogs.showErrorMessage("AimSeg extension",
+                    task.getException() != null ? task.getException().getMessage() : "Unexpected error");
+            dialog.close();
+        });
+
+        Thread thread = new Thread(task, "aimseg-tracing");
+        thread.setDaemon(true);
+        thread.start();
+        dialog.showAndWait();
+    }
+
+    private void configureMinOverlapSpinner() {
+        double initial;
+        try {
+            initial = Double.parseDouble(minOverlapPref.get());
+        } catch (NumberFormatException e) {
+            initial = 0.5;
+        }
+        var valueFactory = new SpinnerValueFactory.DoubleSpinnerValueFactory(0.0, 1.0, initial, 0.05);
+        minOverlapSpinner.setValueFactory(valueFactory);
+        minOverlapSpinner.valueProperty().addListener((obs, oldVal, newVal) ->
+                minOverlapPref.set(String.valueOf(newVal)));
     }
 
     private void configureDevices() {
@@ -371,6 +496,22 @@ public class AimSegController extends BorderPane {
 
         convertToAnnotationsButton.setDisable(!hasAimSegDetections);
         recomputeButton.setDisable(!hasAimSegAnnotations);
+    }
+
+    private void refreshStatusLabel() {
+        var selected = QP.getSelectedObjects();
+        boolean hasSelection = selected != null && !selected.isEmpty();
+        labelMessage.setVisible(!hasSelection);
+        labelMessage.setManaged(!hasSelection);
+        if (!hasSelection) {
+            labelMessage.setText(resources.getString("ui.status.no-selection"));
+        }
+    }
+
+    private void setStatusLabel(String text) {
+        labelMessage.setText(text);
+        labelMessage.setVisible(true);
+        labelMessage.setManaged(true);
     }
 
     /**

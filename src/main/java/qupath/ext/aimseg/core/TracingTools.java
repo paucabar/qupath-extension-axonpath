@@ -1,0 +1,194 @@
+package qupath.ext.aimseg.core;
+
+import org.locationtech.jts.geom.Geometry;
+import org.locationtech.jts.index.strtree.STRtree;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import qupath.lib.common.ColorTools;
+import qupath.lib.images.ImageData;
+import qupath.lib.objects.PathObject;
+import qupath.lib.objects.classes.PathClass;
+
+import java.awt.Color;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.function.DoubleConsumer;
+
+/**
+ * Tools for tracing axons across z-slices of a 3D image stack.
+ *
+ * <p>Each fibre (with at least one axon child) is assigned an integer "Axon ID" measurement.
+ * Fibres on consecutive z-slices are matched greedily by IoU of their ROIs; matched fibres
+ * receive the same ID. The measurement is also propagated to all descendants of each fibre.
+ */
+public class TracingTools {
+    private static final Logger logger = LoggerFactory.getLogger(TracingTools.class);
+    private static final String AXON_ID_MEASUREMENT = "Axon ID";
+
+    private TracingTools() {
+        throw new UnsupportedOperationException("Do not instantiate this class");
+    }
+
+    /**
+     * Assigns "Axon ID" measurements to all Fibre detections (with at least one child) across
+     * z-slices, matching fibres between consecutive slices using a greedy IoU-based strategy.
+     *
+     * @param imageData  the current image data
+     * @param minOverlap minimum IoU threshold to consider two fibres the same across slices (0–1)
+     */
+    public static void traceAxons(ImageData<?> imageData, double minOverlap) {
+        traceAxons(imageData, minOverlap, null);
+    }
+
+    /**
+     * Assigns "Axon ID" measurements to all Fibre detections (with at least one child) across
+     * z-slices, matching fibres between consecutive slices using a greedy IoU-based strategy.
+     *
+     * @param imageData  the current image data
+     * @param minOverlap minimum IoU threshold to consider two fibres the same across slices (0–1)
+     * @param onProgress called after each slice pair with a value in [0, 1]; may be null
+     */
+    public static void traceAxons(ImageData<?> imageData, double minOverlap, DoubleConsumer onProgress) {
+        var hierarchy = imageData.getHierarchy();
+
+        // Collect all Fibre detections with at least one child
+        var allFibres = hierarchy.getFlattenedObjectList(null).stream()
+                .filter(o -> o.getPathClass() == PathClass.getInstance("Fibre"))
+                .filter(o -> o.isDetection())
+                .filter(o -> !o.getChildObjects().isEmpty())
+                .toList();
+
+        if (allFibres.isEmpty()) {
+            logger.warn("traceAxons: no Fibre detections with children found");
+            return;
+        }
+
+        // Check for mixed annotations/detections and warn
+        long annotationCount = hierarchy.getFlattenedObjectList(null).stream()
+                .filter(o -> o.getPathClass() == PathClass.getInstance("Fibre"))
+                .filter(o -> o.isAnnotation())
+                .count();
+        if (annotationCount > 0) {
+            logger.warn("traceAxons: {} Fibre annotation(s) found and will be ignored — only detections are traced",
+                    annotationCount);
+        }
+
+        // Group fibres by z-plane, pre-computing geometries once per fibre
+        Map<Integer, List<FibreEntry>> byZ = new TreeMap<>();
+        for (var fibre : allFibres) {
+            int z = fibre.getROI().getImagePlane().getZ();
+            byZ.computeIfAbsent(z, k -> new ArrayList<>()).add(new FibreEntry(fibre, fibre.getROI().getGeometry()));
+        }
+
+        List<Integer> zSlices = new ArrayList<>(byZ.keySet());
+        logger.info("traceAxons: found {} fibres across {} z-slices: {}", allFibres.size(), zSlices.size(), zSlices);
+
+        // Map from PathObject → assigned Axon ID
+        Map<PathObject, Integer> idMap = new LinkedHashMap<>();
+        int nextId = 1;
+
+        // Assign IDs on the first slice
+        List<FibreEntry> prevSlice = byZ.get(zSlices.get(0));
+        for (var entry : prevSlice) {
+            idMap.put(entry.fibre(), nextId++);
+        }
+
+        // Match consecutive slices
+        for (int i = 1; i < zSlices.size(); i++) {
+            List<FibreEntry> currSlice = byZ.get(zSlices.get(i));
+
+            // Build spatial index over curr slice for fast candidate lookup
+            STRtree tree = new STRtree();
+            for (int c = 0; c < currSlice.size(); c++) {
+                tree.insert(currSlice.get(c).geometry().getEnvelopeInternal(), c);
+            }
+
+            // For each prev fibre, query only spatially nearby curr fibres
+            List<double[]> candidates = new ArrayList<>(); // [iou, prevIdx, currIdx]
+            for (int p = 0; p < prevSlice.size(); p++) {
+                Geometry gPrev = prevSlice.get(p).geometry();
+                @SuppressWarnings("unchecked")
+                List<Integer> nearby = tree.query(gPrev.getEnvelopeInternal());
+                for (int c : nearby) {
+                    double iou = computeIoU(gPrev, currSlice.get(c).geometry());
+                    if (iou >= minOverlap) {
+                        candidates.add(new double[]{iou, p, c});
+                    }
+                }
+            }
+
+            // Sort by IoU descending for greedy matching
+            candidates.sort(Comparator.comparingDouble((double[] row) -> row[0]).reversed());
+
+            Set<Integer> usedPrev = new HashSet<>();
+            Set<Integer> usedCurr = new HashSet<>();
+
+            for (double[] row : candidates) {
+                int p = (int) row[1];
+                int c = (int) row[2];
+                if (usedPrev.contains(p) || usedCurr.contains(c)) continue;
+                idMap.put(currSlice.get(c).fibre(), idMap.get(prevSlice.get(p).fibre()));
+                usedPrev.add(p);
+                usedCurr.add(c);
+            }
+
+            // Assign new IDs to unmatched fibres on curr slice
+            for (int c = 0; c < currSlice.size(); c++) {
+                if (!usedCurr.contains(c)) {
+                    idMap.put(currSlice.get(c).fibre(), nextId++);
+                }
+            }
+
+            prevSlice = currSlice;
+
+            if (onProgress != null) {
+                onProgress.accept((double) i / (zSlices.size() - 1));
+            }
+        }
+
+        // Write measurements and colors to each fibre and all its descendants
+        for (var entry : idMap.entrySet()) {
+            PathObject fibre = entry.getKey();
+            int axonId = entry.getValue();
+            int color = colorForId(axonId);
+            fibre.getMeasurementList().put(AXON_ID_MEASUREMENT, axonId);
+            fibre.setColor(color);
+            for (var descendant : HierarchyTools.getAllDescendants(fibre)) {
+                descendant.getMeasurementList().put(AXON_ID_MEASUREMENT, axonId);
+                descendant.setColor(color);
+            }
+        }
+
+        logger.info("traceAxons: assigned {} unique Axon IDs across {} fibres", nextId - 1, idMap.size());
+        hierarchy.fireObjectClassificationsChangedEvent(TracingTools.class, allFibres);
+        hierarchy.fireObjectMeasurementsChangedEvent(TracingTools.class, allFibres);
+    }
+
+    /** Immutable pair of a fibre object and its pre-computed JTS geometry. */
+    private record FibreEntry(PathObject fibre, Geometry geometry) {}
+
+    /**
+     * Returns a deterministic packed RGB color for the given Axon ID.
+     * Uses golden-ratio hue spacing so consecutive IDs have maximally distinct colors.
+     */
+    private static int colorForId(int axonId) {
+        float hue = (axonId * 0.618033988749895f) % 1.0f;
+        int rgb = Color.HSBtoRGB(hue, 0.75f, 0.95f);
+        return ColorTools.packRGB((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+    }
+
+    private static double computeIoU(Geometry a, Geometry b) {
+        if (!a.getEnvelopeInternal().intersects(b.getEnvelopeInternal())) return 0.0;
+        Geometry intersection = a.intersection(b);
+        double intersectionArea = intersection.getArea();
+        if (intersectionArea == 0.0) return 0.0;
+        double unionArea = a.getArea() + b.getArea() - intersectionArea;
+        return unionArea <= 0.0 ? 0.0 : intersectionArea / unionArea;
+    }
+}
