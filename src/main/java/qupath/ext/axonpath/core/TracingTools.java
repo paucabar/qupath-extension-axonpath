@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Consumer;
 import java.util.function.DoubleConsumer;
 
 /**
@@ -55,6 +56,19 @@ public class TracingTools {
      * @param onProgress called after each slice pair with a value in [0, 1]; may be null
      */
     public static void traceAxons(ImageData<?> imageData, double minOverlap, DoubleConsumer onProgress) {
+        traceAxons(imageData, minOverlap, onProgress, null);
+    }
+
+    /**
+     * Assigns "Axon ID" measurements to all Fibre detections (with at least one child) across
+     * z-slices, matching fibres between consecutive slices using a greedy IoU-based strategy.
+     *
+     * @param imageData  the current image data
+     * @param minOverlap minimum IoU threshold to consider two fibres the same across slices (0–1)
+     * @param onProgress called after each slice pair with a value in [0, 1]; may be null
+     * @param onMessage  called after each slice pair with a human-readable progress string; may be null
+     */
+    public static void traceAxons(ImageData<?> imageData, double minOverlap, DoubleConsumer onProgress, Consumer<String> onMessage) {
         var hierarchy = imageData.getHierarchy();
 
         // Collect all Fibre detections with at least one child
@@ -149,6 +163,9 @@ public class TracingTools {
 
             if (onProgress != null) {
                 onProgress.accept((double) i / (zSlices.size() - 1));
+            }
+            if (onMessage != null) {
+                onMessage.accept("Slice pair " + i + " of " + (zSlices.size() - 1));
             }
         }
 

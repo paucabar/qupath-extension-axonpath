@@ -378,7 +378,9 @@ public class AxonPathController extends BorderPane {
         var task = new Task<Void>() {
             @Override
             protected Void call() {
-                TracingTools.traceAxons(imageData, minOverlap, p -> updateProgress(p, 1.0));
+                TracingTools.traceAxons(imageData, minOverlap,
+                        p -> updateProgress(p, 1.0),
+                        this::updateMessage);
                 return null;
             }
         };
@@ -439,6 +441,10 @@ public class AxonPathController extends BorderPane {
                     .filter(p -> Files.exists(p.resolve("weights.pt")) && Files.exists(p.resolve("rdf.yaml")))
                     .toList();
             modelChoiceBox.getItems().setAll(models);
+            modelDirLabel.setText(path.getFileName().toString());
+            modelDirLabel.getStyleClass().remove("warning-message");
+            if (modelDirLabel.getTooltip() != null)
+                modelDirLabel.getTooltip().setText(pathString);
         } catch (IOException e) {
             logger.error("Error listing model directory: {}", pathString, e);
         }
