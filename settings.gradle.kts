@@ -1,3 +1,5 @@
+rootProject.name = "qupath-extension-axonpath"
+
 pluginManagement {
     repositories {
         gradlePluginPortal()

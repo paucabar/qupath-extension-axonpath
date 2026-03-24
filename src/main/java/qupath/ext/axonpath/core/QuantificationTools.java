@@ -1,4 +1,4 @@
-package qupath.ext.aimseg.core;
+package qupath.ext.axonpath.core;
 
 import java.util.Collection;
 import qupath.lib.objects.PathObject;
@@ -10,7 +10,7 @@ import java.awt.image.BufferedImage;
 
 /**
  * Computes morphometric features from myelinated fibre objects organised in a hierarchy.
- * Depending on the hierarchy structure, either Fibre > Inner Tongue > Axon (EM)
+ * Depending on the hierarchy structure, either Fibre > InnerCylinder > Axon (EM)
  * or Fibre > Axon (brightfield) metrics are calculated and assigned to each fibre.
  */
 public class QuantificationTools {
@@ -29,28 +29,28 @@ public class QuantificationTools {
         }
 
         for (var fibre : fibres) {
-            boolean withInnerTongues = fibre.getChildObjects().stream()
-                    .anyMatch(it -> it.getPathClass() == PathClass.getInstance("Inner Tongue"));
+            boolean withInnerCylinders = fibre.getChildObjects().stream()
+                    .anyMatch(it -> it.getPathClass() == PathClass.getInstance("InnerCylinder"));
 
             double fibreArea = fibre.getROI().getScaledArea(pixelWidth, pixelHeight);
             double fibreCircularity = RoiTools.getCircularity(fibre.getROI());
             double fibreSolidity = fibre.getROI().getSolidity();
 
             double axonArea = 0;
-            double innerTongueArea = 0;
+            double innerCylinderArea = 0;
             int axonCount = 0;
 
-            if (withInnerTongues) {
-                // Fibre > Inner Tongue > Axon
-                for (var innerTongue : fibre.getChildObjects()) {
-                    if (innerTongue.getPathClass() != PathClass.getInstance("Inner Tongue"))
+            if (withInnerCylinders) {
+                // Fibre > InnerCylinder > Axon
+                for (var innerCylinder : fibre.getChildObjects()) {
+                    if (innerCylinder.getPathClass() != PathClass.getInstance("InnerCylinder"))
                         throw new IllegalStateException(
-                            "Expected Inner Tongue child of Fibre, got: " + innerTongue.getPathClass());
-                    innerTongueArea += innerTongue.getROI().getScaledArea(pixelWidth, pixelHeight);
-                    for (var axon : innerTongue.getChildObjects()) {
+                            "Expected InnerCylinder child of Fibre, got: " + innerCylinder.getPathClass());
+                    innerCylinderArea += innerCylinder.getROI().getScaledArea(pixelWidth, pixelHeight);
+                    for (var axon : innerCylinder.getChildObjects()) {
                         if (axon.getPathClass() != PathClass.getInstance("Axon"))
                             throw new IllegalStateException(
-                                "Expected Axon child of Inner Tongue, got: " + axon.getPathClass());
+                                "Expected Axon child of InnerCylinder, got: " + axon.getPathClass());
                         axonArea += axon.getROI().getScaledArea(pixelWidth, pixelHeight);
                         axonCount++;
                     }
@@ -80,10 +80,10 @@ public class QuantificationTools {
                 ml.put("Axon Count", axonCount);
                 ml.put("Axon g-ratio", axonGratio);
 
-                if (withInnerTongues) {
-                    double innerTongueDiameter = 2 * Math.sqrt(innerTongueArea / Math.PI);
-                    double myelinGratio = innerTongueDiameter / fibreDiameter;
-                    ml.put("Inner Tongue Area", innerTongueArea);
+                if (withInnerCylinders) {
+                    double innerCylinderDiameter = 2 * Math.sqrt(innerCylinderArea / Math.PI);
+                    double myelinGratio = innerCylinderDiameter / fibreDiameter;
+                    ml.put("InnerCylinder Area", innerCylinderArea);
                     ml.put("Myelin g-ratio", myelinGratio);
                 }
             }

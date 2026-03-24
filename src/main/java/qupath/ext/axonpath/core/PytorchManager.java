@@ -1,4 +1,4 @@
-package qupath.ext.aimseg.core;
+package qupath.ext.axonpath.core;
 
 import ai.djl.engine.Engine;
 import ai.djl.engine.EngineException;

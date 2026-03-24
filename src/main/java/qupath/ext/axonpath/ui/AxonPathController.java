@@ -1,4 +1,4 @@
-package qupath.ext.aimseg.ui;
+package qupath.ext.axonpath.ui;
 
 import java.io.File;
 import java.io.IOException;
@@ -22,11 +22,11 @@ import org.controlsfx.control.SearchableComboBox;
 import org.controlsfx.dialog.ProgressDialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import qupath.ext.aimseg.core.HierarchyTools;
-import qupath.ext.aimseg.core.PredictionTools;
-import qupath.ext.aimseg.core.PytorchManager;
-import qupath.ext.aimseg.core.QuantificationTools;
-import qupath.ext.aimseg.core.TracingTools;
+import qupath.ext.axonpath.core.HierarchyTools;
+import qupath.ext.axonpath.core.PredictionTools;
+import qupath.ext.axonpath.core.PytorchManager;
+import qupath.ext.axonpath.core.QuantificationTools;
+import qupath.ext.axonpath.core.TracingTools;
 import qupath.fx.dialogs.Dialogs;
 import qupath.fx.dialogs.FileChoosers;
 import java.text.MessageFormat;
@@ -42,9 +42,9 @@ import qupath.lib.roi.ROIs;
 import qupath.lib.scripting.QP;
 import javafx.fxml.FXMLLoader;
 
-public class AimSegController extends BorderPane {
-    private static final ResourceBundle resources = ResourceBundle.getBundle("qupath.ext.aimseg.ui.strings");
-    private static final Logger logger = LoggerFactory.getLogger(AimSegController.class);
+public class AxonPathController extends BorderPane {
+    private static final ResourceBundle resources = ResourceBundle.getBundle("qupath.ext.axonpath.ui.strings");
+    private static final Logger logger = LoggerFactory.getLogger(AxonPathController.class);
 
     @FXML
     private SearchableComboBox<Path> modelChoiceBox;
@@ -63,7 +63,7 @@ public class AimSegController extends BorderPane {
     @FXML
     private TextField minDiameterField;
     @FXML
-    private CheckBox predictInnerTongueCheckBox;
+    private CheckBox predictInnerCylinderCheckBox;
     @FXML
     private Button resetParamsButton;
     @FXML
@@ -75,18 +75,18 @@ public class AimSegController extends BorderPane {
 
     private double defaultPixelSize;
     private double defaultMinDiameter;
-    private boolean defaultPredictInnerTongue;
+    private boolean defaultPredictInnerCylinder;
 
-    private final StringProperty modelDir = PathPrefs.createPersistentPreference("aimseg.model.dir", null);
-    private final StringProperty preferredDevice = PathPrefs.createPersistentPreference("aimseg.inference.device", null);
-    private final StringProperty minOverlapPref = PathPrefs.createPersistentPreference("aimseg.tracing.min.overlap", "0.5");
+    private final StringProperty modelDir = PathPrefs.createPersistentPreference("axonpath.model.dir", null);
+    private final StringProperty preferredDevice = PathPrefs.createPersistentPreference("axonpath.inference.device", null);
+    private final StringProperty minOverlapPref = PathPrefs.createPersistentPreference("axonpath.tracing.min.overlap", "0.5");
 
-    public static AimSegController createInstance() throws IOException {
-        return new AimSegController();
+    public static AxonPathController createInstance() throws IOException {
+        return new AxonPathController();
     }
 
-    private AimSegController() throws IOException {
-        var url = AimSegController.class.getResource("aimseg.fxml");
+    private AxonPathController() throws IOException {
+        var url = AxonPathController.class.getResource("axonpath.fxml");
         FXMLLoader loader = new FXMLLoader(url, resources);
         loader.setRoot(this);
         loader.setController(this);
@@ -136,23 +136,27 @@ public class AimSegController extends BorderPane {
     }
 
     @FXML
-    private void runAimSeg() {
+    private void run() {
         Path modelPath = modelChoiceBox.getSelectionModel().getSelectedItem();
         if (modelPath == null) {
-            Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-model"));
+            Dialogs.showErrorMessage("AxonPath extension", resources.getString("ui.error.no-model"));
             return;
         }
         if (!Files.exists(modelPath)) {
-            Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.model-not-downloaded"));
+            Dialogs.showErrorMessage("AxonPath extension", resources.getString("ui.error.model-not-downloaded"));
             return;
         }
         if (QP.getCurrentImageData() == null) {
-            Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-image"));
+            Dialogs.showErrorMessage("AxonPath extension", resources.getString("ui.error.no-image"));
             return;
         }
         var selectedObjects = new ArrayList<>(QP.getSelectedObjects());
         if (selectedObjects.isEmpty()) {
-            Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-selection"));
+            Dialogs.showErrorMessage("AxonPath extension", resources.getString("ui.error.no-selection"));
+            return;
+        }
+        if (selectedObjects.stream().anyMatch(this::isAxonPathClass)) {
+            Dialogs.showErrorMessage("AxonPath extension", resources.getString("ui.error.axonpath-selection"));
             return;
         }
 
@@ -161,17 +165,17 @@ public class AimSegController extends BorderPane {
             pixelSize = Double.parseDouble(pixelSizeField.getText());
             minDiameter = Double.parseDouble(minDiameterField.getText());
         } catch (NumberFormatException e) {
-            Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.invalid-params"));
+            Dialogs.showErrorMessage("AxonPath extension", resources.getString("ui.error.invalid-params"));
             return;
         }
-        boolean predictInnerTongue = predictInnerTongueCheckBox.isSelected();
+        boolean predictInnerCylinder = predictInnerCylinderCheckBox.isSelected();
         final double finalPixelSize = pixelSize;
         final double finalMinDiameter = minDiameter;
 
         setStatusLabel(MessageFormat.format(
                 resources.getString("ui.run.progress"), 1, selectedObjects.size()));
         runInferenceStep(selectedObjects, 0, modelPath, finalPixelSize, finalMinDiameter,
-                predictInnerTongue, new int[]{0});
+                predictInnerCylinder, new int[]{0});
     }
 
     /**
@@ -180,16 +184,16 @@ public class AimSegController extends BorderPane {
      */
     private void runInferenceStep(List<PathObject> parents, int index,
                                   Path modelPath, double pixelSize, double minDiameter,
-                                  boolean predictInnerTongue, int[] totalObjects) {
+                                  boolean predictInnerCylinder, int[] totalObjects) {
         Platform.runLater(() -> {
             try {
-                var result = PredictionTools.runAimSeg(
+                var result = PredictionTools.runAxonPath(
                         modelPath, QP.getCurrentImageData(), parents.get(index), 0.5, 1,
-                        getSelectedChannel(), pixelSize, minDiameter, predictInnerTongue, getDevice());
+                        getSelectedChannel(), pixelSize, minDiameter, predictInnerCylinder, getDevice());
                 totalObjects[0] += result.size();
             } catch (IOException e) {
-                logger.error("AimSeg inference failed for parent {}", index, e);
-                Dialogs.showErrorMessage("AimSeg extension", e.getMessage());
+                logger.error("AxonPath inference failed for parent {}", index, e);
+                Dialogs.showErrorMessage("AxonPath extension", e.getMessage());
                 onInferenceComplete(parents, totalObjects);
                 return;
             }
@@ -198,7 +202,7 @@ public class AimSegController extends BorderPane {
                 setStatusLabel(MessageFormat.format(
                         resources.getString("ui.run.progress"), next + 1, parents.size()));
                 runInferenceStep(parents, next, modelPath, pixelSize, minDiameter,
-                        predictInnerTongue, totalObjects);
+                        predictInnerCylinder, totalObjects);
             } else {
                 onInferenceComplete(parents, totalObjects);
             }
@@ -206,13 +210,13 @@ public class AimSegController extends BorderPane {
     }
 
     private void onInferenceComplete(List<PathObject> parents, int[] totalObjects) {
-        logger.info("{} total objects created by AimSeg", totalObjects[0]);
+        logger.info("{} total objects created by AxonPath", totalObjects[0]);
         var allFibres = parents.stream()
                 .flatMap(p -> p.getChildObjects().stream())
                 .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
                 .toList();
         if (allFibres.isEmpty())
-            Dialogs.showWarningNotification("AimSeg extension", resources.getString("ui.error.no-valid-fibres"));
+            Dialogs.showWarningNotification("AxonPath extension", resources.getString("ui.error.no-valid-fibres"));
         refreshPostProcessingButtons();
         refreshStatusLabel();
     }
@@ -224,9 +228,9 @@ public class AimSegController extends BorderPane {
         var hierarchy = imageData.getHierarchy();
 
         var detections = QP.getSelectedObjects().stream()
-                .filter(p -> !isAimSegClass(p))
+                .filter(p -> !isAxonPathClass(p))
                 .flatMap(p -> HierarchyTools.getAllDescendants(p).stream())
-                .filter(it -> isAimSegClass(it) && it.isDetection())
+                .filter(it -> isAxonPathClass(it) && it.isDetection())
                 .toList();
 
         if (detections.isEmpty()) return;
@@ -248,29 +252,35 @@ public class AimSegController extends BorderPane {
         if (imageData == null) return;
 
         for (var parentObject : QP.getSelectedObjects()) {
-            if (isAimSegClass(parentObject)) {
-                logger.info("Skipping AimSeg-classed object as parent: {}", parentObject);
+            if (isAxonPathClass(parentObject)) {
+                logger.info("Skipping AxonPath-classed object as parent: {}", parentObject);
                 continue;
             }
             var hierarchy = imageData.getHierarchy();
             var parentROI = parentObject.getROI();
 
-            // Find all AimSeg-classed annotations in the image that fall within this parent
-            var allAimSeg = hierarchy.getFlattenedObjectList(null).stream()
-                    .filter(it -> isAimSegClass(it) && it.isAnnotation())
-                    .filter(it -> parentROI.getGeometry().covers(it.getROI().getGeometry()))
+            // Find all AxonPath-classed annotations in the image that fall within this parent
+            var allAxonPath = hierarchy.getFlattenedObjectList(null).stream()
+                    .filter(it -> isAxonPathClass(it) && it.isAnnotation())
+                    .filter(it -> {
+                        try {
+                            return parentROI.getGeometry().covers(it.getROI().getGeometry());
+                        } catch (Exception e) {
+                            return false;
+                        }
+                    })
                     .toList();
 
-            if (allAimSeg.isEmpty()) {
-                logger.info("No AimSeg objects found within selected parent, skipping");
+            if (allAxonPath.isEmpty()) {
+                logger.info("No AxonPath objects found within selected parent, skipping");
                 continue;
             }
 
             // Convert annotations to detections
-            var detections = allAimSeg.stream()
+            var detections = allAxonPath.stream()
                     .map(d -> PathObjects.createDetectionObject(d.getROI(), d.getPathClass()))
                     .toList();
-            hierarchy.removeObjects(allAimSeg, false);
+            hierarchy.removeObjects(allAxonPath, false);
 
             var fibres = detections.stream()
                     .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
@@ -278,8 +288,8 @@ public class AimSegController extends BorderPane {
             var axons = detections.stream()
                     .filter(it -> it.getPathClass() == PathClass.getInstance("Axon"))
                     .toList();
-            var innerTongues = detections.stream()
-                    .filter(it -> it.getPathClass() == PathClass.getInstance("Inner Tongue"))
+            var innerCylinders = detections.stream()
+                    .filter(it -> it.getPathClass() == PathClass.getInstance("InnerCylinder"))
                     .toList();
 
             if (fibres.isEmpty()) {
@@ -287,7 +297,7 @@ public class AimSegController extends BorderPane {
                 continue;
             }
 
-            HierarchyTools.updateHierarchy(hierarchy, parentObject, fibres, axons, innerTongues);
+            HierarchyTools.updateHierarchy(hierarchy, parentObject, fibres, axons, innerCylinders);
 
             var validFibres = parentObject.getChildObjects().stream()
                     .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
@@ -307,7 +317,7 @@ public class AimSegController extends BorderPane {
     @FXML
     private void showModelDirInfo() {
         Dialogs.showMessageDialog("Model directory",
-                "AimSeg expects each model to be a folder containing:\n" +
+                "AxonPath expects each model to be a folder containing:\n" +
                 "  - weights.pt  (PyTorch model weights)\n" +
                 "  - rdf.yaml    (BioImage.IO model config)\n\n" +
                 "Point the model directory to the folder containing these subfolders.");
@@ -352,7 +362,7 @@ public class AimSegController extends BorderPane {
     private void traceAxons() {
         var imageData = QP.getCurrentImageData();
         if (imageData == null) {
-            Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-image"));
+            Dialogs.showErrorMessage("AxonPath extension", resources.getString("ui.error.no-image"));
             return;
         }
         boolean hasTraceableFibres = imageData.getHierarchy().getFlattenedObjectList(null).stream()
@@ -360,7 +370,7 @@ public class AimSegController extends BorderPane {
                         && o.isDetection()
                         && !o.getChildObjects().isEmpty());
         if (!hasTraceableFibres) {
-            Dialogs.showErrorMessage("AimSeg extension", resources.getString("ui.error.no-traceable-fibres"));
+            Dialogs.showErrorMessage("AxonPath extension", resources.getString("ui.error.no-traceable-fibres"));
             return;
         }
         double minOverlap = minOverlapSpinner.getValue();
@@ -374,18 +384,18 @@ public class AimSegController extends BorderPane {
         };
 
         var dialog = new ProgressDialog(task);
-        dialog.setTitle("AimSeg");
+        dialog.setTitle("AxonPath");
         dialog.setHeaderText(resources.getString("ui.tracing.progress.header"));
 
         task.setOnSucceeded(e -> dialog.close());
         task.setOnFailed(e -> {
             logger.error("Axon tracing failed", task.getException());
-            Dialogs.showErrorMessage("AimSeg extension",
+            Dialogs.showErrorMessage("AxonPath extension",
                     task.getException() != null ? task.getException().getMessage() : "Unexpected error");
             dialog.close();
         });
 
-        Thread thread = new Thread(task, "aimseg-tracing");
+        Thread thread = new Thread(task, "axonpath-tracing");
         thread.setDaemon(true);
         thread.start();
         dialog.showAndWait();
@@ -438,22 +448,22 @@ public class AimSegController extends BorderPane {
         if (modelPath == null || !Files.exists(modelPath.resolve("rdf.yaml"))) {
             pixelSizeField.setDisable(true);
             minDiameterField.setDisable(true);
-            predictInnerTongueCheckBox.setDisable(true);
+            predictInnerCylinderCheckBox.setDisable(true);
             resetParamsButton.setDisable(true);
             pixelSizeField.setText("");
             minDiameterField.setText("");
-            predictInnerTongueCheckBox.setSelected(false);
+            predictInnerCylinderCheckBox.setSelected(false);
             return;
         }
         try {
             var params = PredictionTools.extractParametersFromYaml(modelPath.resolve("rdf.yaml"));
             defaultPixelSize = (double) params.get("pixel_size");
             defaultMinDiameter = (double) params.get("min_diameter");
-            defaultPredictInnerTongue = (boolean) params.get("predict_inner_tongue");
+            defaultPredictInnerCylinder = (boolean) params.get("predict_inner_tongue");
             applyDefaultParams();
             pixelSizeField.setDisable(false);
             minDiameterField.setDisable(false);
-            predictInnerTongueCheckBox.setDisable(false);
+            predictInnerCylinderCheckBox.setDisable(false);
             resetParamsButton.setDisable(false);
         } catch (IOException e) {
             logger.error("Could not read model parameters from rdf.yaml", e);
@@ -463,7 +473,7 @@ public class AimSegController extends BorderPane {
     private void applyDefaultParams() {
         pixelSizeField.setText(String.valueOf(defaultPixelSize));
         minDiameterField.setText(String.valueOf(defaultMinDiameter));
-        predictInnerTongueCheckBox.setSelected(defaultPredictInnerTongue);
+        predictInnerCylinderCheckBox.setSelected(defaultPredictInnerCylinder);
     }
 
     private void refreshChannels() {
@@ -482,20 +492,20 @@ public class AimSegController extends BorderPane {
         }
     }
 
-    private boolean isAimSegClass(PathObject obj) {
+    private boolean isAxonPathClass(PathObject obj) {
         return obj.getPathClass() == PathClass.getInstance("Fibre")
                 || obj.getPathClass() == PathClass.getInstance("Axon")
-                || obj.getPathClass() == PathClass.getInstance("Inner Tongue");
+                || obj.getPathClass() == PathClass.getInstance("InnerCylinder");
     }
 
     private void refreshPostProcessingButtons() {
         var selected = QP.getSelectedObjects();
 
-        boolean hasAimSegAnnotations = selected != null && !selected.isEmpty()
-                && selected.stream().noneMatch(this::isAimSegClass)
+        boolean hasAxonPathAnnotations = selected != null && !selected.isEmpty()
+                && selected.stream().noneMatch(this::isAxonPathClass)
                 && QP.getCurrentImageData() != null
                 && QP.getCurrentImageData().getHierarchy().getFlattenedObjectList(null).stream()
-                .filter(it -> isAimSegClass(it) && it.isAnnotation())
+                .filter(it -> isAxonPathClass(it) && it.isAnnotation())
                 .anyMatch(it -> selected.stream()
                         .anyMatch(p -> {
                             try {
@@ -505,14 +515,14 @@ public class AimSegController extends BorderPane {
                             }
                         }));
 
-        boolean hasAimSegDetections = selected != null
-                && selected.stream().noneMatch(this::isAimSegClass)
+        boolean hasAxonPathDetections = selected != null
+                && selected.stream().noneMatch(this::isAxonPathClass)
                 && selected.stream()
                 .flatMap(p -> HierarchyTools.getAllDescendants(p).stream())
-                .anyMatch(it -> isAimSegClass(it) && it.isDetection());
+                .anyMatch(it -> isAxonPathClass(it) && it.isDetection());
 
-        convertToAnnotationsButton.setDisable(!hasAimSegDetections);
-        recomputeButton.setDisable(!hasAimSegAnnotations);
+        convertToAnnotationsButton.setDisable(!hasAxonPathDetections);
+        recomputeButton.setDisable(!hasAxonPathAnnotations);
     }
 
     private void refreshStatusLabel() {

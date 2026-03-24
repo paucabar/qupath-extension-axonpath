@@ -1,4 +1,4 @@
-package qupath.ext.aimseg;
+package qupath.ext.axonpath;
 
 import java.util.ResourceBundle;
 import javafx.beans.property.BooleanProperty;
@@ -8,7 +8,7 @@ import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import qupath.ext.aimseg.ui.AimSegController;
+import qupath.ext.axonpath.ui.AxonPathController;
 import qupath.fx.dialogs.Dialogs;
 import qupath.fx.utils.FXUtils;
 import qupath.lib.common.Version;
@@ -20,9 +20,9 @@ import qupath.lib.gui.prefs.PathPrefs;
 import java.io.IOException;
 
 
-public class AimSegExtension implements QuPathExtension, GitHubProject {
-	private static final ResourceBundle resources = ResourceBundle.getBundle("qupath.ext.aimseg.ui.strings");
-	private static final Logger logger = LoggerFactory.getLogger(AimSegExtension.class);
+public class AxonPathExtension implements QuPathExtension, GitHubProject {
+	private static final ResourceBundle resources = ResourceBundle.getBundle("qupath.ext.axonpath.ui.strings");
+	private static final Logger logger = LoggerFactory.getLogger(AxonPathExtension.class);
 
 	private static final String EXTENSION_NAME = resources.getString("extension.title");
 	private static final String EXTENSION_DESCRIPTION = resources.getString("extension.description");
@@ -57,7 +57,7 @@ public class AimSegExtension implements QuPathExtension, GitHubProject {
 
 	private void addMenuItem(QuPathGUI qupath) {
 		var menu = qupath.getMenu("Extensions", false);
-		MenuItem menuItem = new MenuItem("AimSeg");
+		MenuItem menuItem = new MenuItem(EXTENSION_NAME);
 		menuItem.setOnAction(e -> createStage());
 		menuItem.disableProperty().bind(enableExtensionProperty.not());
 		menu.getItems().add(menuItem);
@@ -67,11 +67,11 @@ public class AimSegExtension implements QuPathExtension, GitHubProject {
 		if (stage == null) {
 			try {
 				stage = new Stage();
-				var pane = AimSegController.createInstance();
+				var pane = AxonPathController.createInstance();
 				Scene scene = new Scene(new BorderPane(pane));
 				pane.heightProperty().addListener((v, o, n) -> handleStageHeightChange());
 				stage.initOwner(QuPathGUI.getInstance().getStage());
-				stage.setTitle("AimSeg");
+				stage.setTitle(EXTENSION_NAME);
 				stage.setScene(scene);
 				stage.setResizable(false);
 			} catch (IOException e) {
@@ -92,7 +92,7 @@ public class AimSegExtension implements QuPathExtension, GitHubProject {
 	public String getDescription() {
 		return EXTENSION_DESCRIPTION;
 	}
-	
+
 	@Override
 	public Version getQuPathVersion() {
 		return EXTENSION_QUPATH_VERSION;

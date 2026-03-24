@@ -1,4 +1,4 @@
-package qupath.ext.aimseg.core;
+package qupath.ext.axonpath.core;
 
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.index.strtree.STRtree;

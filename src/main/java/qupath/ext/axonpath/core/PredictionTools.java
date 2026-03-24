@@ -1,4 +1,4 @@
-package qupath.ext.aimseg.core;
+package qupath.ext.axonpath.core;
 
 import ij.IJ;
 import ij.ImagePlus;
@@ -48,7 +48,7 @@ import qupath.opencv.tools.OpenCVTools;
 import java.awt.image.BufferedImage;
 
 /**
- * Core processing tools for running AimSeg inference in QuPath.
+ * Core processing tools for running AxonPath inference in QuPath.
  * <p>
  * The pipeline reads a BioImage.IO model bundle (weights.pt + rdf.yaml),
  * runs inference on a selected image region, and returns segmented objects
@@ -57,7 +57,7 @@ import java.awt.image.BufferedImage;
  *   <li>Electron microscopy: Fibre &gt; Inner Tongue &gt; Axon</li>
  *   <li>Brightfield: Fibre &gt; Axon</li>
  * </ul>
- * Whether inner tongues are predicted is controlled by the {@code predict_inner_tongue}
+ * Whether inner cylinders are predicted is controlled by the {@code predict_inner_tongue}
  * flag in the model's rdf.yaml config.
  * <p>
  * Requires the DJL extension and PyTorch engine to be available in QuPath.
@@ -89,7 +89,7 @@ public class PredictionTools {
     }
 
     /**
-     * Extracts AimSeg-specific parameters from the model's rdf.yaml config block.
+     * Extracts AxonPath-specific parameters from the model's rdf.yaml config block.
      * Expected keys: {@code pixel_size}, {@code min_diameter}, {@code predict_inner_tongue}.
      */
     public static Map<String, Object> extractParametersFromYaml(Path yamlPath) throws IOException {
@@ -106,7 +106,7 @@ public class PredictionTools {
     }
 
     /**
-     * Runs the AimSeg DNN model on a region of the image and returns the
+     * Runs the AxonPath DNN model on a region of the image and returns the
      * raw prediction as an ImageJ ImagePlus.
      * <p>
      * The image is normalised to [0, 1] using its min/max pixel values before
@@ -299,7 +299,7 @@ public class PredictionTools {
     /**
      * Performs semantic segmentation on a single channel of the model prediction,
      * returning one annotation object per connected region with the given label value.
-     * Used for Inner Tongue prediction, which does not require watershed separation.
+     * Used for InnerCylinder prediction, which does not require watershed separation.
      */
     static Collection<PathObject> processSemantic(ImagePlus prediction, String className,
                                                   int channel, int labelValue,
@@ -342,7 +342,7 @@ public class PredictionTools {
      * {@code predict_inner_tongue} from the model's rdf.yaml and delegates to the
      * full overload.
      */
-    public static Collection<PathObject> runAimSeg(Path modelPath,
+    public static Collection<PathObject> runAxonPath(Path modelPath,
                                                    ImageData<BufferedImage> imageData,
                                                    PathObject parentObject,
                                                    double minThreshold,
@@ -350,7 +350,7 @@ public class PredictionTools {
                                                    int channel,
                                                    String device) throws IOException {
         Map<String, Object> parameters = extractParametersFromYaml(modelPath.resolve("rdf.yaml"));
-        return runAimSeg(modelPath, imageData, parentObject, minThreshold, maxThreshold, channel,
+        return runAxonPath(modelPath, imageData, parentObject, minThreshold, maxThreshold, channel,
                 (double) parameters.get("pixel_size"),
                 (double) parameters.get("min_diameter"),
                 (boolean) parameters.get("predict_inner_tongue"),
@@ -358,7 +358,7 @@ public class PredictionTools {
     }
 
     /**
-     * Main AimSeg segmentation pipeline.
+     * Main AxonPath segmentation pipeline.
      * <p>
      * Runs inference on the region covered by {@code parentObject}, post-processes
      * the prediction into QuPath detection objects, builds the object hierarchy, and
@@ -372,10 +372,10 @@ public class PredictionTools {
      * @param channel            image channel to use for inference (1-based)
      * @param pixelSize          target pixel size in microns
      * @param minDiameter        minimum object diameter in pixels for seed filtering
-     * @param predictInnerTongue whether to predict inner tongue structures
-     * @return all objects created by the pipeline (fibres, axons, and optionally inner tongues)
+     * @param predictInnerCylinder whether to predict inner tongue structures
+     * @return all objects created by the pipeline (fibres, axons, and optionally inner cylinders)
      */
-    public static Collection<PathObject> runAimSeg(Path modelPath,
+    public static Collection<PathObject> runAxonPath(Path modelPath,
                                                    ImageData<BufferedImage> imageData,
                                                    PathObject parentObject,
                                                    double minThreshold,
@@ -383,7 +383,7 @@ public class PredictionTools {
                                                    int channel,
                                                    double pixelSize,
                                                    double minDiameter,
-                                                   boolean predictInnerTongue,
+                                                   boolean predictInnerCylinder,
                                                    String device) throws IOException {
         var hierarchy = imageData.getHierarchy();
         if (!parentObject.getChildObjects().isEmpty()) {
@@ -393,10 +393,10 @@ public class PredictionTools {
 
         double targetPixelSizeMicrons = pixelSize;
         double minDiameterPixels = minDiameter;
-        boolean predictInnerTongueFlag = predictInnerTongue;
+        boolean predictInnerCylinderFlag = predictInnerCylinder;
 
         logger.info("Model parameters: pixel_size={} µm, min_diameter={} px, predict_inner_tongue={}",
-                targetPixelSizeMicrons, minDiameterPixels, predictInnerTongueFlag);
+                targetPixelSizeMicrons, minDiameterPixels, predictInnerCylinderFlag);
 
         double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, false);
         logger.info("Downsample factor: {}", downsample);
@@ -428,22 +428,22 @@ public class PredictionTools {
                 minThreshold, maxThreshold, downsample, minDiameterPixels,
                 imageData, request, translateX, translateY);
 
-        Collection<PathObject> innerTongues = List.of();
-        if (predictInnerTongueFlag) {
-            innerTongues = processSemantic(prediction, "Inner Tongue", 1, 2,
+        Collection<PathObject> innerCylinders = List.of();
+        if (predictInnerCylinderFlag) {
+            innerCylinders = processSemantic(prediction, "InnerCylinder", 1, 2,
                     downsample, translateX, translateY, request.getImagePlane());
         }
 
-        logger.info("Detected: {} fibres, {} axons, {} inner tongues",
-                fibres.size(), axons.size(), innerTongues.size());
+        logger.info("Detected: {} fibres, {} axons, {} inner cylinders",
+                fibres.size(), axons.size(), innerCylinders.size());
 
         // Fill holes in all detected ROIs before building the hierarchy
         fibres = fillHoles(fibres);
         axons = fillHoles(axons);
-        innerTongues = fillHoles(innerTongues);
+        innerCylinders = fillHoles(innerCylinders);
 
         // Build hierarchy and compute morphometric features
-        HierarchyTools.updateHierarchy(imageData.getHierarchy(), parentObject, fibres, axons, innerTongues);
+        HierarchyTools.updateHierarchy(imageData.getHierarchy(), parentObject, fibres, axons, innerCylinders);
 
         var validFibres = parentObject.getChildObjects().stream()
                 .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
@@ -454,7 +454,7 @@ public class PredictionTools {
             parentObject.setLocked(true);
         }
 
-        return Stream.of(fibres.stream(), axons.stream(), innerTongues.stream())
+        return Stream.of(fibres.stream(), axons.stream(), innerCylinders.stream())
                 .flatMap(s -> s)
                 .collect(Collectors.toSet());
     }
