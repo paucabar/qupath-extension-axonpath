@@ -6,7 +6,7 @@ plugins {
 qupathExtension {
     name = "qupath-extension-aimseg"
     version = "0.1.0-SNAPSHOT"
-    group = "io.github.qupath"
+    group = "io.github.paucabar"
     description = "A QuPath extension for running inference with the AimSeg deep learning model"
     automaticModule = "qupath.extension.aimseg"
 }

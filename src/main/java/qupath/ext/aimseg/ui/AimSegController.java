@@ -17,6 +17,7 @@ import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
+import javafx.util.StringConverter;
 import org.controlsfx.control.SearchableComboBox;
 import org.controlsfx.dialog.ProgressDialog;
 import org.slf4j.Logger;
@@ -92,6 +93,16 @@ public class AimSegController extends BorderPane {
         loader.load();
         configureDevices();
         configureMinOverlapSpinner();
+        modelChoiceBox.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(Path path) {
+                return path == null ? "" : path.getFileName().toString();
+            }
+            @Override
+            public Path fromString(String s) {
+                return null;
+            }
+        });
         refreshModels(modelDir.get());
 
         // Refresh model params when selection changes
@@ -486,7 +497,13 @@ public class AimSegController extends BorderPane {
                 && QP.getCurrentImageData().getHierarchy().getFlattenedObjectList(null).stream()
                 .filter(it -> isAimSegClass(it) && it.isAnnotation())
                 .anyMatch(it -> selected.stream()
-                        .anyMatch(p -> p.getROI().getGeometry().covers(it.getROI().getGeometry())));
+                        .anyMatch(p -> {
+                            try {
+                                return p.getROI().getGeometry().covers(it.getROI().getGeometry());
+                            } catch (Exception e) {
+                                return false;
+                            }
+                        }));
 
         boolean hasAimSegDetections = selected != null
                 && selected.stream().noneMatch(this::isAimSegClass)
