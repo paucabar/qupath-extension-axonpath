@@ -19,7 +19,7 @@
 <?import javafx.scene.text.Text?>
 <?import org.controlsfx.control.SearchableComboBox?>
 <?import org.controlsfx.control.SegmentedButton?>
-<fx:root maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefWidth="330" stylesheets="@aimseg.css" type="BorderPane" xmlns="http://javafx.com/javafx/22" xmlns:fx="http://javafx.com/fxml/1">
+<fx:root maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefWidth="330" stylesheets="@axonpath.css" type="BorderPane" xmlns="http://javafx.com/javafx/22" xmlns:fx="http://javafx.com/fxml/1">
     <center>
         <VBox>
             <TitledPane fx:id="pane1" animated="false" collapsible="false" prefWidth="330.0" styleClass="uncollapsible-titled-pane" text="%ui.processing.pane" VBox.vgrow="NEVER">
@@ -77,24 +77,34 @@
                         <HBox alignment="CENTER_LEFT" styleClass="standard-spacing standard-padding">
                             <Label styleClass="regular" text="%ui.params.pixel-size" />
                             <Pane minWidth="5" HBox.hgrow="ALWAYS" />
-                            <TextField fx:id="pixelSizeField" prefWidth="80.0" disable="true">
+                            <TextField fx:id="pixelSizeField" prefWidth="60.0" disable="true">
                                 <tooltip><Tooltip text="%ui.params.pixel-size.tooltip" /></tooltip>
                             </TextField>
+                            <Label fx:id="downsampleLabel" styleClass="regular" prefWidth="80" />
                         </HBox>
                         <HBox alignment="CENTER_LEFT" styleClass="standard-spacing standard-padding">
                             <Label styleClass="regular" text="%ui.params.min-diameter" />
                             <Pane minWidth="5" HBox.hgrow="ALWAYS" />
-                            <TextField fx:id="minDiameterField" prefWidth="80.0" disable="true">
+                            <TextField fx:id="minDiameterField" prefWidth="60.0" disable="true">
                                 <tooltip><Tooltip text="%ui.params.min-diameter.tooltip" /></tooltip>
                             </TextField>
+                            <Label fx:id="minDiameterMicronsLabel" styleClass="regular" prefWidth="80" />
                         </HBox>
                         <HBox alignment="CENTER_LEFT" styleClass="standard-spacing standard-padding">
-                            <Label styleClass="regular" text="%ui.params.predict-inner-tongue" />
+                            <Label styleClass="regular" text="%ui.params.predict-inner-cylinder" />
                             <Pane minWidth="5" HBox.hgrow="ALWAYS" />
-                            <CheckBox fx:id="predictInnerTongueCheckBox" disable="true">
-                                <tooltip><Tooltip text="%ui.params.predict-inner-tongue.tooltip" /></tooltip>
+                            <CheckBox fx:id="predictInnerCylinderCheckBox" disable="true">
+                                <tooltip><Tooltip text="%ui.params.predict-inner-cylinder.tooltip" /></tooltip>
                             </CheckBox>
                         </HBox>
+                        <HBox alignment="CENTER_LEFT" styleClass="standard-spacing standard-padding">
+                            <Label styleClass="regular" text="%ui.params.remove-edge-fibres" />
+                            <Pane minWidth="5" HBox.hgrow="ALWAYS" />
+                            <CheckBox fx:id="removeEdgeFibresCheckBox" selected="false">
+                                <tooltip><Tooltip text="%ui.params.remove-edge-fibres.tooltip" /></tooltip>
+                            </CheckBox>
+                        </HBox>
+
                         <Separator prefWidth="200.0" />
 
                         <!-- Channel selection -->
@@ -135,7 +145,7 @@
                         <!-- Run -->
                         <VBox alignment="CENTER" styleClass="standard-spacing standard-padding">
                             <HBox alignment="CENTER" styleClass="standard-spacing">
-                                <Button fx:id="runButton" prefWidth="252.0" text="%ui.run" onAction="#runAimSeg">
+                                <Button fx:id="runButton" prefWidth="252.0" text="%ui.run" onAction="#run">
                                     <tooltip><Tooltip text="%ui.run.tooltip" /></tooltip>
                                 </Button>
                             </HBox>
@@ -163,7 +173,7 @@
                     </HBox>
                 </VBox>
             </TitledPane>
-            <!-- Post-processing -->
+            <!-- Review & Edit -->
             <TitledPane animated="false" text="%ui.postprocess.pane" VBox.vgrow="NEVER">
                 <VBox alignment="TOP_CENTER" spacing="7.5" styleClass="standard-padding">
                     <padding>

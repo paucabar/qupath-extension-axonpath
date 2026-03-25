@@ -4,11 +4,11 @@ plugins {
 }
 
 qupathExtension {
-    name = "qupath-extension-aimseg"
+    name = "qupath-extension-axonpath"
     version = "0.1.0-SNAPSHOT"
-    group = "io.github.qupath"
-    description = "A QuPath extension for running inference with the AimSeg deep learning model"
-    automaticModule = "qupath.extension.aimseg"
+    group = "io.github.paucabar"
+    description = "A QuPath extension for running inference with the AxonPath deep learning model"
+    automaticModule = "qupath.extension.axonpath"
 }
 
 dependencies {

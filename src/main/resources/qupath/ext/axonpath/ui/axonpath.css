@@ -1,16 +1,15 @@
 /* Title */
-.aimseg {
+.axonpath {
     -fx-font-size: 150%;
     -fx-font-weight: bold;
     -fx-text-fill: -fx-text-base-color;
 }
 
 /* Sub-title */
-.aimseg-sub-title {
+.axonpath-sub-title {
     -fx-text-fill: -fx-text-base-color;
     -fx-opacity:0.6;
     -fx-font-style: italic;
-    /*-fx-padding: -7.5;*/
 }
 
 /* message-label-styles */
@@ -26,7 +25,7 @@
 }
 
 /* separator */
-.aimseg .separator {
+.axonpath .separator {
     -fx-line-color: -fx-text-base-color;
     -fx-padding: 15;
 }
@@ -50,5 +49,3 @@
     -fx-font-size: 14px;
     -fx-fill: -fx-text-base-color;
 }
-
-

@@ -1,4 +1,4 @@
-package qupath.ext.aimseg.core;
+package qupath.ext.axonpath.core;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -45,14 +45,14 @@ public class HierarchyTools {
     private static Collection<PathObject> clipToParentBoundary(PathObject rootObject, Collection<PathObject> fibres) {
         Geometry parentShape = rootObject.getROI().getGeometry();
         List<PathObject> result = new ArrayList<>();
+        Geometry parentShapeBuffered = parentShape.buffer(0.5);
         for (var fibre : fibres) {
             Geometry fibreShape = fibre.getROI().getGeometry();
-            Geometry overlap = parentShape.intersection(fibreShape);
-            if (overlap.isEmpty()) continue;
-            double overlapRatio = overlap.getArea() / fibreShape.getArea();
-            if (overlapRatio > 0.9999) {
+            if (parentShapeBuffered.covers(fibreShape)) {
                 result.add(fibre);
             } else {
+                Geometry overlap = parentShape.intersection(fibreShape);
+                if (overlap.isEmpty()) continue;
                 Geometry clipped = GeometryTools.homogenizeGeometryCollection(overlap);
                 ROI clippedROI = GeometryTools.geometryToROI(clipped, fibre.getROI().getImagePlane());
                 result.add(PathObjects.createDetectionObject(clippedROI, fibre.getPathClass()));
@@ -91,8 +91,8 @@ public class HierarchyTools {
     }
 
     /**
-     * Builds the object hierarchy after AimSeg inference.
-     * If inner tongues are present, the expected structure is Fibre > Inner Tongue > Axon.
+     * Builds the object hierarchy after AxonPath inference.
+     * If inner cylinders are present, the expected structure is Fibre > InnerCylinder > Axon.
      * Otherwise, the expected structure is Fibre > Axon.
      * Orphaned objects and fibres missing expected children are removed.
      */
@@ -100,32 +100,32 @@ public class HierarchyTools {
                                 PathObject rootObject,
                                 Collection<PathObject> fibres,
                                 Collection<PathObject> axons,
-                                Collection<PathObject> innerTongues) {
+                                Collection<PathObject> innerCylinders) {
 
         // Clip all objects to the actual parent annotation shape (bounding box may be larger)
         Collection<PathObject> boundedFibres = clipToParentBoundary(rootObject, fibres);
         Collection<PathObject> boundedAxons = clipToParentBoundary(rootObject, axons);
-        Collection<PathObject> boundedInnerTongues = clipToParentBoundary(rootObject, innerTongues);
-        logger.info("Clipped to parent boundary: fibres {} → {}, axons {} → {}, inner tongues {} → {}",
+        Collection<PathObject> boundedInnerCylinders = clipToParentBoundary(rootObject, innerCylinders);
+        logger.info("Clipped to parent boundary: fibres {} → {}, axons {} → {}, inner cylinders {} → {}",
                 fibres.size(), boundedFibres.size(), axons.size(), boundedAxons.size(),
-                innerTongues.size(), boundedInnerTongues.size());
+                innerCylinders.size(), boundedInnerCylinders.size());
 
-        boolean withInnerTongues = !boundedInnerTongues.isEmpty();
+        boolean withInnerCylinders = !boundedInnerCylinders.isEmpty();
 
-        if (withInnerTongues) {
-            logger.info("Assigning {} inner tongues to {} fibres", boundedInnerTongues.size(), boundedFibres.size());
-            assignChildrenToParents(boundedFibres, boundedInnerTongues);
+        if (withInnerCylinders) {
+            logger.info("Assigning {} inner cylinders to {} fibres", boundedInnerCylinders.size(), boundedFibres.size());
+            assignChildrenToParents(boundedFibres, boundedInnerCylinders);
 
-            Collection<PathObject> assignedInnerTongues = boundedFibres.stream()
+            Collection<PathObject> assignedInnerCylinders = boundedFibres.stream()
                     .flatMap(f -> f.getChildObjects().stream())
-                    .filter(it -> it.getPathClass() == PathClass.getInstance("Inner Tongue"))
+                    .filter(it -> it.getPathClass() == PathClass.getInstance("InnerCylinder"))
                     .toList();
 
-            logger.info("Assigning {} axons to {} inner tongues", boundedAxons.size(), assignedInnerTongues.size());
-            assignChildrenToParents(assignedInnerTongues, boundedAxons);
+            logger.info("Assigning {} axons to {} inner cylinders", boundedAxons.size(), assignedInnerCylinders.size());
+            assignChildrenToParents(assignedInnerCylinders, boundedAxons);
 
             Collection<PathObject> orphans = Stream.concat(
-                    boundedInnerTongues.stream().filter(it -> it.getLevel() == 0),
+                    boundedInnerCylinders.stream().filter(it -> it.getLevel() == 0),
                     boundedAxons.stream().filter(it -> it.getLevel() == 0)
             ).toList();
             logger.info("Removing {} orphaned objects", orphans.size());
@@ -142,7 +142,7 @@ public class HierarchyTools {
             hierarchy.removeObjects(orphanedAxons, false);
         }
 
-        Collection<PathObject> incompleteFibres = findIncompleteFibres(boundedFibres, withInnerTongues);
+        Collection<PathObject> incompleteFibres = findIncompleteFibres(boundedFibres, withInnerCylinders);
         logger.info("Removing {} incomplete fibres", incompleteFibres.size());
 
         Collection<PathObject> validFibres = boundedFibres.stream()
@@ -153,18 +153,18 @@ public class HierarchyTools {
 
     /**
      * Returns fibres that are missing their expected children.
-     * With inner tongues: a valid fibre needs at least one inner tongue containing at least one axon.
-     * Without inner tongues: a valid fibre needs at least one axon.
+     * With inner cylinders: a valid fibre needs at least one inner tongue containing at least one axon.
+     * Without inner cylinders: a valid fibre needs at least one axon.
      */
-    private static Collection<PathObject> findIncompleteFibres(Collection<PathObject> fibres, boolean withInnerTongues) {
+    private static Collection<PathObject> findIncompleteFibres(Collection<PathObject> fibres, boolean withInnerCylinders) {
         Set<PathObject> incomplete = new HashSet<>();
 
         for (var fibre : fibres) {
-            if (withInnerTongues) {
-                boolean hasPopulatedInnerTongue = fibre.getChildObjects().stream()
-                        .filter(it -> it.getPathClass() == PathClass.getInstance("Inner Tongue"))
+            if (withInnerCylinders) {
+                boolean hasPopulatedInnerCylinder = fibre.getChildObjects().stream()
+                        .filter(it -> it.getPathClass() == PathClass.getInstance("InnerCylinder"))
                         .anyMatch(it -> !it.getChildObjects().isEmpty());
-                if (!hasPopulatedInnerTongue) {
+                if (!hasPopulatedInnerCylinder) {
                     incomplete.add(fibre);
                 }
             } else {
