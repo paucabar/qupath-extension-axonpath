@@ -32,6 +32,7 @@ import qupath.fx.dialogs.FileChoosers;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.prefs.PathPrefs;
 import qupath.lib.objects.PathObject;
@@ -274,12 +275,22 @@ public class AxonPathController extends BorderPane {
             var hierarchy = imageData.getHierarchy();
             var parentROI = parentObject.getROI();
 
-            // Find all AxonPath-classed annotations in the image that fall within this parent
+            // Collect all AxonPath annotations that either directly intersect the parent, or
+            // have a QuPath ancestor (fibre) that intersects the parent. The ancestor check handles
+            // annotations created from scratch where QuPath places the axon as a child of the fibre
+            // in the hierarchy, even when the axon lies outside the parent boundary.
+            var parentGeom = parentROI.getGeometry();
             var allAxonPath = hierarchy.getFlattenedObjectList(null).stream()
                     .filter(it -> isAxonPathClass(it) && it.isAnnotation())
                     .filter(it -> {
                         try {
-                            return parentROI.getGeometry().covers(it.getROI().getGeometry());
+                            if (parentGeom.intersects(it.getROI().getGeometry())) return true;
+                            PathObject ancestor = it.getParent();
+                            while (ancestor != null && isAxonPathClass(ancestor)) {
+                                if (parentGeom.intersects(ancestor.getROI().getGeometry())) return true;
+                                ancestor = ancestor.getParent();
+                            }
+                            return false;
                         } catch (Exception e) {
                             return false;
                         }
@@ -554,7 +565,7 @@ public class AxonPathController extends BorderPane {
                 .anyMatch(it -> selected.stream()
                         .anyMatch(p -> {
                             try {
-                                return p.getROI().getGeometry().covers(it.getROI().getGeometry());
+                                return p.getROI().getGeometry().intersects(it.getROI().getGeometry());
                             } catch (Exception e) {
                                 return false;
                             }

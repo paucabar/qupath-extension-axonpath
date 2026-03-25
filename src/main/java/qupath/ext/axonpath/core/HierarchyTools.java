@@ -45,14 +45,14 @@ public class HierarchyTools {
     private static Collection<PathObject> clipToParentBoundary(PathObject rootObject, Collection<PathObject> fibres) {
         Geometry parentShape = rootObject.getROI().getGeometry();
         List<PathObject> result = new ArrayList<>();
+        Geometry parentShapeBuffered = parentShape.buffer(0.5);
         for (var fibre : fibres) {
             Geometry fibreShape = fibre.getROI().getGeometry();
-            Geometry overlap = parentShape.intersection(fibreShape);
-            if (overlap.isEmpty()) continue;
-            double overlapRatio = overlap.getArea() / fibreShape.getArea();
-            if (overlapRatio > 0.9999) {
+            if (parentShapeBuffered.covers(fibreShape)) {
                 result.add(fibre);
             } else {
+                Geometry overlap = parentShape.intersection(fibreShape);
+                if (overlap.isEmpty()) continue;
                 Geometry clipped = GeometryTools.homogenizeGeometryCollection(overlap);
                 ROI clippedROI = GeometryTools.geometryToROI(clipped, fibre.getROI().getImagePlane());
                 result.add(PathObjects.createDetectionObject(clippedROI, fibre.getPathClass()));
