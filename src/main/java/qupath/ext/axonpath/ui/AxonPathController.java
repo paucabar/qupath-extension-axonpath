@@ -414,6 +414,7 @@ public class AxonPathController extends BorderPane {
         var dialog = new ProgressDialog(task);
         dialog.setTitle("AxonPath");
         dialog.setHeaderText(resources.getString("ui.tracing.progress.header"));
+        dialog.setOnShown(e -> dialog.getDialogPane().setGraphic(null));
 
         task.setOnSucceeded(e -> dialog.close());
         task.setOnFailed(e -> {
