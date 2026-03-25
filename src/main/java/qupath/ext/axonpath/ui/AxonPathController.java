@@ -65,6 +65,8 @@ public class AxonPathController extends BorderPane {
     @FXML
     private CheckBox predictInnerCylinderCheckBox;
     @FXML
+    private CheckBox removeEdgeFibresCheckBox;
+    @FXML
     private Button resetParamsButton;
     @FXML
     private Label labelMessage;
@@ -169,13 +171,14 @@ public class AxonPathController extends BorderPane {
             return;
         }
         boolean predictInnerCylinder = predictInnerCylinderCheckBox.isSelected();
+        boolean removeEdgeFibres = removeEdgeFibresCheckBox.isSelected();
         final double finalPixelSize = pixelSize;
         final double finalMinDiameter = minDiameter;
 
         setStatusLabel(MessageFormat.format(
                 resources.getString("ui.run.progress"), 1, selectedObjects.size()));
         runInferenceStep(selectedObjects, 0, modelPath, finalPixelSize, finalMinDiameter,
-                predictInnerCylinder, new int[]{0});
+                predictInnerCylinder, removeEdgeFibres, new int[]{0});
     }
 
     /**
@@ -184,12 +187,12 @@ public class AxonPathController extends BorderPane {
      */
     private void runInferenceStep(List<PathObject> parents, int index,
                                   Path modelPath, double pixelSize, double minDiameter,
-                                  boolean predictInnerCylinder, int[] totalObjects) {
+                                  boolean predictInnerCylinder, boolean removeEdgeFibres, int[] totalObjects) {
         Platform.runLater(() -> {
             try {
                 var result = PredictionTools.runAxonPath(
                         modelPath, QP.getCurrentImageData(), parents.get(index), 0.5, 1,
-                        getSelectedChannel(), pixelSize, minDiameter, predictInnerCylinder, getDevice());
+                        getSelectedChannel(), pixelSize, minDiameter, predictInnerCylinder, removeEdgeFibres, getDevice());
                 totalObjects[0] += result.size();
             } catch (IOException e) {
                 logger.error("AxonPath inference failed for parent {}", index, e);
@@ -202,7 +205,7 @@ public class AxonPathController extends BorderPane {
                 setStatusLabel(MessageFormat.format(
                         resources.getString("ui.run.progress"), next + 1, parents.size()));
                 runInferenceStep(parents, next, modelPath, pixelSize, minDiameter,
-                        predictInnerCylinder, totalObjects);
+                        predictInnerCylinder, removeEdgeFibres, totalObjects);
             } else {
                 onInferenceComplete(parents, totalObjects);
             }

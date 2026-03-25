@@ -354,6 +354,7 @@ public class PredictionTools {
                 (double) parameters.get("pixel_size"),
                 (double) parameters.get("min_diameter"),
                 (boolean) parameters.get("predict_inner_tongue"),
+                false,
                 device);
     }
 
@@ -372,7 +373,8 @@ public class PredictionTools {
      * @param channel            image channel to use for inference (1-based)
      * @param pixelSize          target pixel size in microns
      * @param minDiameter        minimum object diameter in pixels for seed filtering
-     * @param predictInnerCylinder whether to predict inner tongue structures
+     * @param predictInnerCylinder whether to predict inner cylinder structures
+     * @param removeEdgeFibres     whether to remove fibres touching the parent boundary after hierarchy is built
      * @return all objects created by the pipeline (fibres, axons, and optionally inner cylinders)
      */
     public static Collection<PathObject> runAxonPath(Path modelPath,
@@ -384,6 +386,7 @@ public class PredictionTools {
                                                    double pixelSize,
                                                    double minDiameter,
                                                    boolean predictInnerCylinder,
+                                                   boolean removeEdgeFibres,
                                                    String device) throws IOException {
         var hierarchy = imageData.getHierarchy();
         if (!parentObject.getChildObjects().isEmpty()) {
@@ -442,8 +445,12 @@ public class PredictionTools {
         axons = fillHoles(axons);
         innerCylinders = fillHoles(innerCylinders);
 
-        // Build hierarchy and compute morphometric features
+        // Build hierarchy and optionally remove edge fibres before quantification
         HierarchyTools.updateHierarchy(imageData.getHierarchy(), parentObject, fibres, axons, innerCylinders);
+
+        if (removeEdgeFibres) {
+            FilterTools.removeFibresTouchingBoundary(parentObject, imageData.getHierarchy());
+        }
 
         var validFibres = parentObject.getChildObjects().stream()
                 .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))

@@ -95,6 +95,14 @@
                                 <tooltip><Tooltip text="%ui.params.predict-inner-cylinder.tooltip" /></tooltip>
                             </CheckBox>
                         </HBox>
+                        <HBox alignment="CENTER_LEFT" styleClass="standard-spacing standard-padding">
+                            <Label styleClass="regular" text="%ui.params.remove-edge-fibres" />
+                            <Pane minWidth="5" HBox.hgrow="ALWAYS" />
+                            <CheckBox fx:id="removeEdgeFibresCheckBox" selected="false">
+                                <tooltip><Tooltip text="%ui.params.remove-edge-fibres.tooltip" /></tooltip>
+                            </CheckBox>
+                        </HBox>
+
                         <Separator prefWidth="200.0" />
 
                         <!-- Channel selection -->
