@@ -304,15 +304,18 @@ public class PredictionTools {
     static Collection<PathObject> processSemantic(ImagePlus prediction, String className,
                                                   int channel, int labelValue,
                                                   double downsample,
+                                                  double minDiameterPixels,
                                                   double translateX, double translateY,
                                                   ImagePlane plane) {
         prediction.setC(channel);
         ImageProcessor ip = prediction.getProcessor();
         ip.setThreshold(labelValue, labelValue, ImageProcessor.NO_LUT_UPDATE);
 
+        // minSize is in inference pixels² (binaryMask is at inference resolution, default calibration)
+        double minSize = Math.PI * Math.pow(minDiameterPixels / 2.0, 2);
         ImagePlus binaryMask = new ImagePlus("Binary Mask", ip.createMask());
         int options = ParticleAnalyzer.SHOW_MASKS + ParticleAnalyzer.ADD_TO_MANAGER + ParticleAnalyzer.COMPOSITE_ROIS;
-        analyzeParticles(binaryMask, options, Measurements.AREA, 0, Double.POSITIVE_INFINITY, 0, 1);
+        analyzeParticles(binaryMask, options, Measurements.AREA, minSize, Double.POSITIVE_INFINITY, 0, 1);
 
         RoiManager rm = RoiManager.getInstance();
         if (rm == null || rm.getCount() == 0) {
@@ -434,7 +437,7 @@ public class PredictionTools {
         Collection<PathObject> innerCylinders = List.of();
         if (predictInnerCylinderFlag) {
             innerCylinders = processSemantic(prediction, "InnerCylinder", 1, 2,
-                    downsample, translateX, translateY, request.getImagePlane());
+                    downsample, minDiameterPixels, translateX, translateY, request.getImagePlane());
         }
 
         logger.info("Detected: {} fibres, {} axons, {} inner cylinders",
