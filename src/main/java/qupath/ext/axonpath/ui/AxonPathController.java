@@ -67,6 +67,10 @@ public class AxonPathController extends BorderPane {
     @FXML
     private CheckBox removeEdgeFibresCheckBox;
     @FXML
+    private Label minDiameterMicronsLabel;
+    @FXML
+    private Label downsampleLabel;
+    @FXML
     private Button resetParamsButton;
     @FXML
     private Label labelMessage;
@@ -107,6 +111,13 @@ public class AxonPathController extends BorderPane {
         });
         refreshModels(modelDir.get());
 
+        // Update µm display whenever pixel size or min diameter changes
+        pixelSizeField.textProperty().addListener((obs, oldVal, newVal) -> updateMinDiameterMicrons());
+        minDiameterField.textProperty().addListener((obs, oldVal, newVal) -> updateMinDiameterMicrons());
+
+        // Update downsample display whenever pixel size changes
+        pixelSizeField.textProperty().addListener((obs, oldVal, newVal) -> updateDownsampleDisplay());
+
         // Refresh model params when selection changes
         modelChoiceBox.getSelectionModel().selectedItemProperty().addListener(
                 (obs, oldVal, newVal) -> refreshModelParams(newVal));
@@ -116,6 +127,7 @@ public class AxonPathController extends BorderPane {
                 (obs, oldImage, newImage) -> {
                     refreshChannels();
                     refreshPostProcessingButtons();
+                    updateDownsampleDisplay();
                 });
         refreshChannels();
 
@@ -450,6 +462,30 @@ public class AxonPathController extends BorderPane {
                 modelDirLabel.getTooltip().setText(pathString);
         } catch (IOException e) {
             logger.error("Error listing model directory: {}", pathString, e);
+        }
+    }
+
+    private void updateDownsampleDisplay() {
+        try {
+            double targetPixelSize = Double.parseDouble(pixelSizeField.getText());
+            var imageData = QP.getCurrentImageData();
+            if (imageData == null) { downsampleLabel.setText(""); return; }
+            double imagePixelSize = imageData.getServer().getPixelCalibration().getAveragedPixelSizeMicrons();
+            if (!Double.isFinite(imagePixelSize) || imagePixelSize <= 0) { downsampleLabel.setText(""); return; }
+            long downsample = Math.max(1, Math.round(targetPixelSize / imagePixelSize));
+            downsampleLabel.setText("(\u00d7" + downsample + ")");
+        } catch (NumberFormatException e) {
+            downsampleLabel.setText("");
+        }
+    }
+
+    private void updateMinDiameterMicrons() {
+        try {
+            double px = Double.parseDouble(minDiameterField.getText());
+            double microns = Double.parseDouble(pixelSizeField.getText());
+            minDiameterMicronsLabel.setText(String.format("(%.2f \u00b5m)", px * microns));
+        } catch (NumberFormatException e) {
+            minDiameterMicronsLabel.setText("");
         }
     }
 
