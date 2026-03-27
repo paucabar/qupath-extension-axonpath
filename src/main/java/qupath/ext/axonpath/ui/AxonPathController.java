@@ -16,6 +16,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleButton;
 import javafx.scene.layout.BorderPane;
 import javafx.util.StringConverter;
 import org.controlsfx.control.SearchableComboBox;
@@ -59,6 +60,10 @@ public class AxonPathController extends BorderPane {
     private Button convertToAnnotationsButton;
     @FXML
     private Button recomputeButton;
+    @FXML
+    private ToggleButton lockAnnotationsButton;
+    @FXML
+    private ToggleButton unlockAnnotationsButton;
     @FXML
     private TextField pixelSizeField;
     @FXML
@@ -252,7 +257,11 @@ public class AxonPathController extends BorderPane {
         if (detections.isEmpty()) return;
 
         var annotations = detections.stream()
-                .map(d -> PathObjects.createAnnotationObject(d.getROI(), d.getPathClass()))
+                .map(d -> {
+                    var ann = PathObjects.createAnnotationObject(d.getROI(), d.getPathClass());
+                    ann.setLocked(true);
+                    return ann;
+                })
                 .toList();
 
         hierarchy.removeObjects(detections, false);
@@ -260,6 +269,51 @@ public class AxonPathController extends BorderPane {
         hierarchy.fireHierarchyChangedEvent(this);
 
         refreshPostProcessingButtons();
+    }
+
+    @FXML
+    private void lockAnnotations() {
+        setAxonPathAnnotationsLocked(true);
+        lockAnnotationsButton.setSelected(false);
+    }
+
+    @FXML
+    private void unlockAnnotations() {
+        setAxonPathAnnotationsLocked(false);
+        unlockAnnotationsButton.setSelected(false);
+    }
+
+    private void setAxonPathAnnotationsLocked(boolean locked) {
+        var imageData = QP.getCurrentImageData();
+        if (imageData == null) return;
+        var hierarchy = imageData.getHierarchy();
+        var allAxonPathAnnotations = hierarchy.getFlattenedObjectList(null).stream()
+                .filter(it -> isAxonPathClass(it) && it.isAnnotation())
+                .toList();
+        var toUpdate = QP.getSelectedObjects().stream()
+                .filter(p -> !isAxonPathClass(p))
+                .flatMap(p -> {
+                    var parentGeom = p.getROI().getGeometry();
+                    return allAxonPathAnnotations.stream()
+                            .filter(it -> {
+                                try {
+                                    if (parentGeom.intersects(it.getROI().getGeometry())) return true;
+                                    PathObject ancestor = it.getParent();
+                                    while (ancestor != null && isAxonPathClass(ancestor)) {
+                                        if (parentGeom.intersects(ancestor.getROI().getGeometry())) return true;
+                                        ancestor = ancestor.getParent();
+                                    }
+                                    return false;
+                                } catch (Exception e) {
+                                    return false;
+                                }
+                            });
+                })
+                .distinct()
+                .toList();
+        if (toUpdate.isEmpty()) return;
+        toUpdate.forEach(it -> it.setLocked(locked));
+        hierarchy.fireHierarchyChangedEvent(this);
     }
 
     @FXML
@@ -580,6 +634,8 @@ public class AxonPathController extends BorderPane {
 
         convertToAnnotationsButton.setDisable(!hasAxonPathDetections);
         recomputeButton.setDisable(!hasAxonPathAnnotations);
+        lockAnnotationsButton.setDisable(!hasAxonPathAnnotations);
+        unlockAnnotationsButton.setDisable(!hasAxonPathAnnotations);
     }
 
     private void refreshStatusLabel() {
