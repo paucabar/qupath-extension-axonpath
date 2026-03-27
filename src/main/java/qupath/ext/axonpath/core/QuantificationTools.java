@@ -40,19 +40,34 @@ public class QuantificationTools {
             double innerCylinderArea = 0;
             int axonCount = 0;
 
+            String fibreId = fibre.getID().toString();
             if (withInnerCylinders) {
                 // Fibre > InnerCylinder > Axon
                 for (var innerCylinder : fibre.getChildObjects()) {
                     if (innerCylinder.getPathClass() != PathClass.getInstance("InnerCylinder"))
                         throw new IllegalStateException(
                             "Expected InnerCylinder child of Fibre, got: " + innerCylinder.getPathClass());
-                    innerCylinderArea += innerCylinder.getROI().getScaledArea(pixelWidth, pixelHeight);
+                    double icArea = innerCylinder.getROI().getScaledArea(pixelWidth, pixelHeight);
+                    innerCylinderArea += icArea;
+                    try (var ml = innerCylinder.getMeasurementList()) {
+                        ml.put("Area", icArea);
+                        ml.put("Circularity", RoiTools.getCircularity(innerCylinder.getROI()));
+                        ml.put("Solidity", innerCylinder.getROI().getSolidity());
+                    }
+                    innerCylinder.getMetadata().put("Parent Fibre ID", fibreId);
                     for (var axon : innerCylinder.getChildObjects()) {
                         if (axon.getPathClass() != PathClass.getInstance("Axon"))
                             throw new IllegalStateException(
                                 "Expected Axon child of InnerCylinder, got: " + axon.getPathClass());
-                        axonArea += axon.getROI().getScaledArea(pixelWidth, pixelHeight);
+                        double aArea = axon.getROI().getScaledArea(pixelWidth, pixelHeight);
+                        axonArea += aArea;
                         axonCount++;
+                        try (var ml = axon.getMeasurementList()) {
+                            ml.put("Area", aArea);
+                            ml.put("Circularity", RoiTools.getCircularity(axon.getROI()));
+                            ml.put("Solidity", axon.getROI().getSolidity());
+                        }
+                        axon.getMetadata().put("Parent Fibre ID", fibreId);
                     }
                 }
             } else {
@@ -61,8 +76,15 @@ public class QuantificationTools {
                     if (axon.getPathClass() != PathClass.getInstance("Axon"))
                         throw new IllegalStateException(
                             "Expected Axon child of Fibre, got: " + axon.getPathClass());
-                    axonArea += axon.getROI().getScaledArea(pixelWidth, pixelHeight);
+                    double aArea = axon.getROI().getScaledArea(pixelWidth, pixelHeight);
+                    axonArea += aArea;
                     axonCount++;
+                    try (var ml = axon.getMeasurementList()) {
+                        ml.put("Area", aArea);
+                        ml.put("Circularity", RoiTools.getCircularity(axon.getROI()));
+                        ml.put("Solidity", axon.getROI().getSolidity());
+                    }
+                    axon.getMetadata().put("Parent Fibre ID", fibreId);
                 }
             }
 
