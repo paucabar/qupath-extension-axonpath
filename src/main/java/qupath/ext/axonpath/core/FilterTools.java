@@ -18,9 +18,9 @@ public class FilterTools {
     }
 
     /**
-     * Removes all Fibre detections (and their children) whose geometry intersects the boundary
-     * of the parent object. Uses zero tolerance — only fibres that geometrically touch the
-     * parent boundary are removed.
+     * Removes all Fibre detections (and their children) whose geometry is within 1 pixel of
+     * the parent boundary. The 1-pixel default absorbs floating point precision errors from
+     * JTS clipping while being too small to affect genuinely interior fibres.
      *
      * @param parent    the parent annotation defining the region boundary
      * @param hierarchy the QuPath object hierarchy
@@ -38,17 +38,15 @@ public class FilterTools {
      * @param tolerancePx distance in pixels to expand the boundary check; use 0 for exact intersection only
      */
     public static void removeFibresTouchingBoundary(PathObject parent, PathObjectHierarchy hierarchy, double tolerancePx) {
-        Geometry parentGeometry = parent.getROI().getGeometry();
-        Geometry boundary = tolerancePx > 0
-                ? parentGeometry.getBoundary().buffer(tolerancePx)
-                : parentGeometry.getBoundary();
+        Geometry boundary = parent.getROI().getGeometry().getBoundary();
+        double threshold = tolerancePx > 0 ? tolerancePx : 1.0;
 
         var fibresToRemove = parent.getChildObjects().stream()
                 .filter(o -> o.getPathClass() == PathClass.getInstance("Fibre"))
                 .filter(o -> o.isDetection())
                 .filter(o -> {
                     try {
-                        return o.getROI().getGeometry().intersects(boundary);
+                        return o.getROI().getGeometry().distance(boundary) < threshold;
                     } catch (Exception e) {
                         logger.warn("removeFibresTouchingBoundary: skipping fibre with invalid geometry: {}", e.getMessage());
                         return false;

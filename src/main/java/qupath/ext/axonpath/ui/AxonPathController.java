@@ -405,12 +405,24 @@ public class AxonPathController extends BorderPane {
 
     @FXML
     private void selectAllAnnotations() {
-        QP.selectAnnotations();
+        var imageData = QP.getCurrentImageData();
+        if (imageData == null) return;
+        var hierarchy = imageData.getHierarchy();
+        var toSelect = hierarchy.getAnnotationObjects().stream()
+                .filter(a -> !isAxonPathClass(a))
+                .toList();
+        hierarchy.getSelectionModel().setSelectedObjects(toSelect, toSelect.isEmpty() ? null : toSelect.get(0));
     }
 
     @FXML
     private void selectAllDetections() {
-        QP.selectDetections();
+        var imageData = QP.getCurrentImageData();
+        if (imageData == null) return;
+        var hierarchy = imageData.getHierarchy();
+        var toSelect = hierarchy.getDetectionObjects().stream()
+                .filter(d -> !isAxonPathClass(d))
+                .toList();
+        hierarchy.getSelectionModel().setSelectedObjects(toSelect, toSelect.isEmpty() ? null : toSelect.get(0));
     }
 
     @FXML
