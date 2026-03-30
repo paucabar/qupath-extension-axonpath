@@ -74,13 +74,25 @@ public class PredictionTools {
     /**
      * Calculates the downsample factor needed to reach the target pixel size.
      * <p>
-     * If the computed factor is within 1% of an integer it is snapped to that integer
-     * (avoids interpolation artefacts for near-integer ratios). Otherwise the exact
-     * float is returned. Upsampling (factor &lt; 1) is allowed but triggers a warning.
+     * If the computed factor is within ±10% of 1.0, resampling is skipped and 1.0 is
+     * returned — interpolation artefacts outweigh any benefit at such small scale
+     * differences, and the model is trained with scale augmentation covering the same
+     * range. Outside that band, if the factor is within 1% of an integer it is snapped
+     * to that integer (avoids artefacts for near-integer ratios). Otherwise the exact
+     * float is returned. Upsampling (factor &lt; 0.9) is allowed but triggers a warning.
      */
     static double calculateDownsampleFactor(ImageData<BufferedImage> imageData, double targetPixelSizeMicrons) {
         double imagePixelSizeMicrons = imageData.getServer().getPixelCalibration().getAveragedPixelSizeMicrons();
         double downsampleFactor = targetPixelSizeMicrons / imagePixelSizeMicrons;
+
+        // Skip resampling for pixel-size differences within ±10%: interpolation
+        // artefacts outweigh any benefit at this scale, and the model is trained
+        // with scale augmentation covering the same range.
+        if (downsampleFactor >= 0.9 && downsampleFactor <= 1.1) {
+            if (downsampleFactor != 1.0)
+                logger.debug("Pixel size difference within ±10% tolerance (factor = {}), skipping resampling.", downsampleFactor);
+            return 1.0;
+        }
 
         if (downsampleFactor < 1) {
             logger.warn("Target pixel size ({} µm) is smaller than image pixel size ({} µm). " +

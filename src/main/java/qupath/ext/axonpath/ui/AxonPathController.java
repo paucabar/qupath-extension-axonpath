@@ -563,8 +563,13 @@ public class AxonPathController extends BorderPane {
             if (!Double.isFinite(imagePixelSize) || imagePixelSize <= 0) { downsampleLabel.setText(""); return; }
 
             double raw = targetPixelSize / imagePixelSize;
-            double rounded = Math.round(raw);
-            double downsample = GeneralTools.almostTheSame(raw, rounded, 0.01) ? rounded : raw;
+            double downsample;
+            if (raw >= 0.9 && raw <= 1.1) {
+                downsample = 1.0;
+            } else {
+                double rounded = Math.round(raw);
+                downsample = GeneralTools.almostTheSame(raw, rounded, 0.01) ? rounded : raw;
+            }
 
             String text = (downsample == Math.floor(downsample))
                     ? "(\u00d7" + (long) downsample + ")"
