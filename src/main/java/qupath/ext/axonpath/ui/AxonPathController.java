@@ -42,12 +42,14 @@ import qupath.lib.objects.PathObjects;
 import qupath.lib.objects.classes.PathClass;
 import qupath.lib.regions.ImagePlane;
 import qupath.lib.roi.ROIs;
+import qupath.lib.common.GeneralTools;
 import qupath.lib.scripting.QP;
 import javafx.fxml.FXMLLoader;
 
 public class AxonPathController extends BorderPane {
     private static final ResourceBundle resources = ResourceBundle.getBundle("qupath.ext.axonpath.ui.strings");
     private static final Logger logger = LoggerFactory.getLogger(AxonPathController.class);
+    private boolean isRunning = false;
 
     @FXML
     private SearchableComboBox<Path> modelChoiceBox;
@@ -200,10 +202,11 @@ public class AxonPathController extends BorderPane {
         final double finalPixelSize = pixelSize;
         final double finalMinDiameter = minDiameter;
 
+        isRunning = true;
         setStatusLabel(MessageFormat.format(
                 resources.getString("ui.run.progress"), 1, selectedObjects.size()));
-        runInferenceStep(selectedObjects, 0, modelPath, finalPixelSize, finalMinDiameter,
-                predictInnerCylinder, removeEdgeFibres, new int[]{0});
+        Platform.runLater(() -> runInferenceStep(selectedObjects, 0, modelPath, finalPixelSize, finalMinDiameter,
+                predictInnerCylinder, removeEdgeFibres, new int[]{0}));
     }
 
     /**
@@ -238,6 +241,7 @@ public class AxonPathController extends BorderPane {
     }
 
     private void onInferenceComplete(List<PathObject> parents, int[] totalObjects) {
+        isRunning = false;
         logger.info("{} total objects created by AxonPath", totalObjects[0]);
         var allFibres = parents.stream()
                 .flatMap(p -> p.getChildObjects().stream())
@@ -557,10 +561,25 @@ public class AxonPathController extends BorderPane {
             if (imageData == null) { downsampleLabel.setText(""); return; }
             double imagePixelSize = imageData.getServer().getPixelCalibration().getAveragedPixelSizeMicrons();
             if (!Double.isFinite(imagePixelSize) || imagePixelSize <= 0) { downsampleLabel.setText(""); return; }
-            long downsample = Math.max(1, Math.round(targetPixelSize / imagePixelSize));
-            downsampleLabel.setText("(\u00d7" + downsample + ")");
+
+            double raw = targetPixelSize / imagePixelSize;
+            double rounded = Math.round(raw);
+            double downsample = GeneralTools.almostTheSame(raw, rounded, 0.01) ? rounded : raw;
+
+            String text = (downsample == Math.floor(downsample))
+                    ? "(\u00d7" + (long) downsample + ")"
+                    : String.format("(\u00d7%.2f)", downsample);
+            downsampleLabel.setText(text);
+
+            if (downsample < 1.0) {
+                if (!downsampleLabel.getStyleClass().contains("downsample-warning"))
+                    downsampleLabel.getStyleClass().add("downsample-warning");
+            } else {
+                downsampleLabel.getStyleClass().remove("downsample-warning");
+            }
         } catch (NumberFormatException e) {
             downsampleLabel.setText("");
+            downsampleLabel.getStyleClass().remove("downsample-warning");
         }
     }
 
@@ -658,16 +677,20 @@ public class AxonPathController extends BorderPane {
     }
 
     private void refreshStatusLabel() {
+        if (isRunning) return;
         var selected = QP.getSelectedObjects();
         boolean hasSelection = selected != null && !selected.isEmpty();
         labelMessage.setVisible(!hasSelection);
         labelMessage.setManaged(!hasSelection);
         if (!hasSelection) {
+            if (!labelMessage.getStyleClass().contains("error-message"))
+                labelMessage.getStyleClass().add("error-message");
             labelMessage.setText(resources.getString("ui.status.no-selection"));
         }
     }
 
     private void setStatusLabel(String text) {
+        labelMessage.getStyleClass().remove("error-message");
         labelMessage.setText(text);
         labelMessage.setVisible(true);
         labelMessage.setManaged(true);

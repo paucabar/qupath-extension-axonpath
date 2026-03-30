@@ -29,6 +29,7 @@ import qupath.imagej.processing.SimpleThresholding;
 import qupath.imagej.processing.Watershed;
 import qupath.imagej.tools.IJTools;
 import qupath.lib.common.ColorTools;
+import qupath.lib.common.GeneralTools;
 import qupath.lib.images.ImageData;
 import qupath.lib.images.servers.ImageServer;
 import qupath.lib.images.servers.LabeledImageServer;
@@ -72,20 +73,25 @@ public class PredictionTools {
 
     /**
      * Calculates the downsample factor needed to reach the target pixel size.
-     * If the target pixel size is smaller than the image pixel size and upscaling
-     * is not allowed, the downsample factor is set to 1 and a warning is logged.
+     * <p>
+     * If the computed factor is within 1% of an integer it is snapped to that integer
+     * (avoids interpolation artefacts for near-integer ratios). Otherwise the exact
+     * float is returned. Upsampling (factor &lt; 1) is allowed but triggers a warning.
      */
-    static double calculateDownsampleFactor(ImageData<BufferedImage> imageData, double targetPixelSizeMicrons, boolean allowUpscaling) {
+    static double calculateDownsampleFactor(ImageData<BufferedImage> imageData, double targetPixelSizeMicrons) {
         double imagePixelSizeMicrons = imageData.getServer().getPixelCalibration().getAveragedPixelSizeMicrons();
         double downsampleFactor = targetPixelSizeMicrons / imagePixelSizeMicrons;
 
-        if (!allowUpscaling && downsampleFactor < 1) {
-            logger.warn("Target pixel size ({} µm) is smaller than the image pixel size ({} µm). Downsample will not be applied (factor set to 1).",
-                    targetPixelSizeMicrons, imagePixelSizeMicrons);
-            return 1;
+        if (downsampleFactor < 1) {
+            logger.warn("Target pixel size ({} µm) is smaller than image pixel size ({} µm). " +
+                    "Upsampling will be applied (factor = {}).",
+                    targetPixelSizeMicrons, imagePixelSizeMicrons, downsampleFactor);
         }
 
-        return Math.round(downsampleFactor);
+        double rounded = Math.round(downsampleFactor);
+        if (GeneralTools.almostTheSame(downsampleFactor, rounded, 0.01))
+            return rounded;
+        return downsampleFactor;
     }
 
     /**
@@ -404,7 +410,7 @@ public class PredictionTools {
         logger.info("Model parameters: pixel_size={} µm, min_diameter={} px, predict_inner_tongue={}",
                 targetPixelSizeMicrons, minDiameterPixels, predictInnerCylinderFlag);
 
-        double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons, false);
+        double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons);
         logger.info("Downsample factor: {}", downsample);
 
         // Define the region to process based on the parent annotation and selected channel

@@ -44,6 +44,16 @@
     -fx-padding: 2;
 }
 
+/* downsample label when upsampling would be applied */
+.downsample-warning {
+    -fx-text-fill: #e67e00;
+}
+
+/* status label in "no selection" hint state */
+.error-message {
+    -fx-text-fill: #e67e00;
+}
+
 .fa-icon {
     -fx-font-family: FontAwesome;
     -fx-font-size: 14px;
