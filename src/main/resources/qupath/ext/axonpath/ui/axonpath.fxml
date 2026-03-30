@@ -157,7 +157,7 @@
             </TitledPane>
 
             <!-- Additional Options -->
-            <TitledPane animated="false" maxHeight="Infinity" text="%ui.options.pane" VBox.vgrow="NEVER">
+            <TitledPane animated="false" expanded="false" maxHeight="Infinity" text="%ui.options.pane" VBox.vgrow="NEVER">
                 <VBox alignment="TOP_CENTER" spacing="7.5" styleClass="standard-padding">
                     <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
                         <padding>
@@ -174,7 +174,7 @@
                 </VBox>
             </TitledPane>
             <!-- Review & Edit -->
-            <TitledPane animated="false" text="%ui.postprocess.pane" VBox.vgrow="NEVER">
+            <TitledPane animated="false" expanded="false" text="%ui.postprocess.pane" VBox.vgrow="NEVER">
                 <VBox alignment="TOP_CENTER" spacing="7.5" styleClass="standard-padding">
                     <padding>
                         <Insets left="10" right="10" top="10" bottom="10" />
@@ -205,7 +205,7 @@
                 </VBox>
             </TitledPane>
             <!-- 3D Tracing -->
-            <TitledPane animated="false" text="%ui.tracing.pane" VBox.vgrow="NEVER">
+            <TitledPane animated="false" expanded="false" text="%ui.tracing.pane" VBox.vgrow="NEVER">
                 <VBox alignment="TOP_CENTER" spacing="7.5" styleClass="standard-padding">
                     <padding>
                         <Insets left="10" right="10" top="10" bottom="10" />
@@ -222,6 +222,18 @@
                     <Button fx:id="traceAxonsButton" prefWidth="252.0"
                             text="%ui.tracing.run" onAction="#traceAxons">
                         <tooltip><Tooltip text="%ui.tracing.run.tooltip" /></tooltip>
+                    </Button>
+                </VBox>
+            </TitledPane>
+            <!-- Data Export -->
+            <TitledPane animated="false" expanded="false" text="%ui.export.pane" VBox.vgrow="NEVER">
+                <VBox alignment="TOP_CENTER" spacing="7.5" styleClass="standard-padding">
+                    <padding>
+                        <Insets left="10" right="10" top="10" bottom="10" />
+                    </padding>
+                    <Button fx:id="exportMeasurementsButton" prefWidth="252.0" disable="true"
+                            text="%ui.export.open" onAction="#openExportDialog">
+                        <tooltip><Tooltip text="%ui.export.open.tooltip" /></tooltip>
                     </Button>
                 </VBox>
             </TitledPane>

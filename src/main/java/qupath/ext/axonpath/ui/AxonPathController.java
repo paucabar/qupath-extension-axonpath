@@ -28,6 +28,7 @@ import qupath.ext.axonpath.core.PredictionTools;
 import qupath.ext.axonpath.core.PytorchManager;
 import qupath.ext.axonpath.core.QuantificationTools;
 import qupath.ext.axonpath.core.TracingTools;
+import qupath.ext.axonpath.ui.ExportDialog;
 import qupath.fx.dialogs.Dialogs;
 import qupath.fx.dialogs.FileChoosers;
 import java.text.MessageFormat;
@@ -84,6 +85,8 @@ public class AxonPathController extends BorderPane {
     private Spinner<Double> minOverlapSpinner;
     @FXML
     private Button traceAxonsButton;
+    @FXML
+    private Button exportMeasurementsButton;
 
     private double defaultPixelSize;
     private double defaultMinDiameter;
@@ -127,6 +130,10 @@ public class AxonPathController extends BorderPane {
         // Refresh model params when selection changes
         modelChoiceBox.getSelectionModel().selectedItemProperty().addListener(
                 (obs, oldVal, newVal) -> refreshModelParams(newVal));
+
+        // Enable export button only when a project is open
+        exportMeasurementsButton.disableProperty().bind(
+                QuPathGUI.getInstance().projectProperty().isNull());
 
         // Refresh channels and post-processing buttons whenever the image changes
         QuPathGUI.getInstance().imageDataProperty().addListener(
@@ -677,5 +684,22 @@ public class AxonPathController extends BorderPane {
         } catch (Exception e) {
             return 1;
         }
+    }
+
+    @FXML
+    private void openExportDialog() {
+        var gui = QuPathGUI.getInstance();
+        var project = gui.getProject();
+        // Save current image data so export can read the latest measurements from disk
+        var imageData = gui.getImageData();
+        if (imageData != null && project != null) {
+            try {
+                var entry = project.getEntry(imageData);
+                if (entry != null) entry.saveImageData(imageData);
+            } catch (Exception e) {
+                logger.warn("Could not save image data before export", e);
+            }
+        }
+        ExportDialog.show((javafx.stage.Stage) getScene().getWindow(), project);
     }
 }
