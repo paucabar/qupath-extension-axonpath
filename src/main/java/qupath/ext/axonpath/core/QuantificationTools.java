@@ -22,9 +22,14 @@ import qupath.lib.roi.RoiTools;
 import qupath.lib.roi.interfaces.ROI;
 
 /**
- * Computes morphometric features from myelinated fibre objects organised in a hierarchy.
- * Depending on the hierarchy structure, either Fibre > InnerCylinder > Axon (EM)
- * or Fibre > Axon (brightfield) metrics are calculated and assigned to each fibre.
+ * Computes morphometric and intensity-based features from myelinated fibre objects organised
+ * in a hierarchy. Two public methods are provided:
+ * <ul>
+ *   <li>{@link #computeFeatures} — shape metrics (area, circularity, solidity, g-ratio)</li>
+ *   <li>{@link #computeIntensityFeatures} — per-compartment intensity statistics</li>
+ * </ul>
+ * Both methods support either Fibre &gt; InnerCylinder &gt; Axon (EM) or Fibre &gt; Axon
+ * (brightfield) hierarchy structures.
  */
 public class QuantificationTools {
 
