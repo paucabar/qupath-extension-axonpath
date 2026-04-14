@@ -394,6 +394,7 @@ public class AxonPathController extends BorderPane {
                     .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
                     .toList();
             QuantificationTools.computeFeatures(imageData, validFibres);
+            QuantificationTools.computeIntensityFeatures(imageData, validFibres);
         }
 
         logger.info("Hierarchy and measurements recomputed");

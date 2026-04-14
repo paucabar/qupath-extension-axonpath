@@ -479,6 +479,7 @@ public class PredictionTools {
                 .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
                 .toList();
         QuantificationTools.computeFeatures(imageData, validFibres);
+        QuantificationTools.computeIntensityFeatures(imageData, validFibres);
 
         if (!parentObject.isLocked()) {
             parentObject.setLocked(true);
