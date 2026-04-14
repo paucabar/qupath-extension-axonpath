@@ -246,9 +246,11 @@ public class PredictionTools {
                 .toList();
         hierarchy.addObjects(seedObjects);
 
-        // Filter seeds smaller than 30% of the minimum expected object diameter
+        // Filter seeds smaller than 30% of the minimum expected object diameter.
+        // minSeedArea must be in full-resolution pixels² because p.getROI().getArea()
+        // always returns area in full-res coords — scale the radius by downsample.
         double minSeedRadius = 0.3 * minDiameterPixels / 2;
-        double minSeedArea = Math.PI * Math.pow(minSeedRadius, 2);
+        double minSeedArea = Math.PI * Math.pow(minSeedRadius * downsample, 2);
 
         // Render seeds as a 16-bit instance label image using LabeledImageServer.
         // A seed-specific RegionRequest is required so the server path matches correctly.
