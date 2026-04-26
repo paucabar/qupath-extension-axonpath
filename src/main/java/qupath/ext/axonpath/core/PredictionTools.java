@@ -55,10 +55,10 @@ import java.awt.image.BufferedImage;
  * runs inference on a selected image region, and returns segmented objects
  * organised into a meaningful hierarchy:
  * <ul>
- *   <li>Electron microscopy: Fibre &gt; Inner Tongue &gt; Axon</li>
+ *   <li>Electron microscopy: Fibre &gt; InnerCylinder &gt; Axon</li>
  *   <li>Brightfield: Fibre &gt; Axon</li>
  * </ul>
- * Whether inner cylinders are predicted is controlled by the {@code predict_inner_tongue}
+ * Whether inner cylinders are predicted is controlled by the {@code predict_inner_cylinder}
  * flag in the model's rdf.yaml config.
  * <p>
  * Requires the DJL extension and PyTorch engine to be available in QuPath.
@@ -108,7 +108,7 @@ public class PredictionTools {
 
     /**
      * Extracts AxonPath-specific parameters from the model's rdf.yaml config block.
-     * Expected keys: {@code pixel_size}, {@code min_diameter}, {@code predict_inner_tongue}.
+     * Expected keys: {@code pixel_size}, {@code min_diameter}, {@code predict_inner_cylinder}.
      */
     public static Map<String, Object> extractParametersFromYaml(Path yamlPath) throws IOException {
         Yaml yaml = new Yaml();
@@ -118,7 +118,7 @@ public class PredictionTools {
             return Map.of(
                     "pixel_size", config.get("pixel_size"),
                     "min_diameter", config.get("min_diameter"),
-                    "predict_inner_tongue", config.get("predict_inner_tongue")
+                    "predict_inner_cylinder", config.get("predict_inner_cylinder")
             );
         }
     }
@@ -362,7 +362,7 @@ public class PredictionTools {
 
     /**
      * Convenience overload that reads {@code pixel_size}, {@code min_diameter}, and
-     * {@code predict_inner_tongue} from the model's rdf.yaml and delegates to the
+     * {@code predict_inner_cylinder} from the model's rdf.yaml and delegates to the
      * full overload.
      */
     public static Collection<PathObject> runAxonPath(Path modelPath,
@@ -376,7 +376,7 @@ public class PredictionTools {
         return runAxonPath(modelPath, imageData, parentObject, minThreshold, maxThreshold, channel,
                 (double) parameters.get("pixel_size"),
                 (double) parameters.get("min_diameter"),
-                (boolean) parameters.get("predict_inner_tongue"),
+                (boolean) parameters.get("predict_inner_cylinder"),
                 false,
                 device);
     }
@@ -421,7 +421,7 @@ public class PredictionTools {
         double minDiameterPixels = minDiameter;
         boolean predictInnerCylinderFlag = predictInnerCylinder;
 
-        logger.info("Model parameters: pixel_size={} µm, min_diameter={} px, predict_inner_tongue={}",
+        logger.info("Model parameters: pixel_size={} µm, min_diameter={} px, predict_inner_cylinder={}",
                 targetPixelSizeMicrons, minDiameterPixels, predictInnerCylinderFlag);
 
         double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons);
