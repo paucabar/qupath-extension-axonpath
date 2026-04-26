@@ -109,12 +109,22 @@ public class PredictionTools {
     /**
      * Extracts AxonPath-specific parameters from the model's rdf.yaml config block.
      * Expected keys: {@code pixel_size}, {@code min_diameter}, {@code predict_inner_cylinder}.
+     *
+     * @throws IOException if the file cannot be read or a required config key is missing
      */
     public static Map<String, Object> extractParametersFromYaml(Path yamlPath) throws IOException {
         Yaml yaml = new Yaml();
         try (var inputStream = Files.newInputStream(yamlPath)) {
             Map<String, Object> yamlData = yaml.load(inputStream);
             Map<String, Object> config = (Map<String, Object>) yamlData.get("config");
+            if (config == null)
+                throw new IOException("rdf.yaml is missing required 'config' block: " + yamlPath);
+            var requiredKeys = List.of("pixel_size", "min_diameter", "predict_inner_cylinder");
+            for (var key : requiredKeys) {
+                if (!config.containsKey(key))
+                    throw new IOException(
+                            "rdf.yaml config block is missing required key '" + key + "': " + yamlPath);
+            }
             return Map.of(
                     "pixel_size", config.get("pixel_size"),
                     "min_diameter", config.get("min_diameter"),
@@ -127,31 +137,30 @@ public class PredictionTools {
      * Runs the AxonPath DNN model on a region of the image and returns the
      * raw prediction as an ImageJ ImagePlus.
      * <p>
-     * The image is normalised to [0, 1] using its min/max pixel values before
-     * being passed to the model.
+     * The image is normalised to [0, 1] by clipping to the 1st–99th percentile
+     * of the tile's pixel values before being passed to the model. This matches
+     * the per-tile percentile normalisation applied during training.
      */
     static ImagePlus modelInference(URI modelUri, String layout, int inputWidth, int inputHeight,
                                     Padding padding, int[] inputShape,
                                     ImageData<BufferedImage> imageData, ImageServer<BufferedImage> server,
                                     RegionRequest request, int channel, String device) throws IOException {
-        // Compute min/max stats from the correct channel using QuPath's raster directly
-        double min, max;
+        // Compute 1st/99th percentile stats from the correct channel using QuPath's raster directly
+        double p1, range;
         try {
             var channelPixels = server.readRegion(request);
             var raster = channelPixels.getRaster();
             int channelIdx = channel - 1;
             double[] pixels = raster.getSamples(0, 0, raster.getWidth(), raster.getHeight(), channelIdx, (double[]) null);
-            min = Double.MAX_VALUE;
-            max = -Double.MAX_VALUE;
-            for (double p : pixels) {
-                if (p < min) min = p;
-                if (p > max) max = p;
-            }
-            logger.info("Channel {} stats: min={}, max={}", channel, min, max);
+            double[] stats = percentileNormStats(pixels);
+            p1 = stats[0];
+            double p99 = stats[1];
+            range = Math.max(p99 - p1, 1e-6);
+            logger.info("Channel {} stats: p1={}, p99={}", channel, p1, p99);
         } catch (Exception e) {
             logger.warn("Could not compute channel stats, using defaults 0-1", e);
-            min = 0;
-            max = 1;
+            p1 = 0;
+            range = 1;
         }
 
         DjlTools.setOverrideDevice("PyTorch", Device.fromName(device));
@@ -161,8 +170,9 @@ public class PredictionTools {
                     .appendOps(
                             ImageOps.Channels.extract(channel - 1),
                             ImageOps.Core.ensureType(PixelType.FLOAT32),
-                            ImageOps.Core.subtract(min),
-                            ImageOps.Core.divide(max - min),
+                            ImageOps.Core.subtract(p1),
+                            ImageOps.Core.divide(range),
+                            ImageOps.Core.clip(0.0, 1.0),
                             ImageOps.ML.dnn(dnn, inputWidth, inputHeight, padding)
                     );
             var mat = op.apply(imageData, request);
@@ -173,6 +183,19 @@ public class PredictionTools {
         }
 
         return prediction;
+    }
+
+    /**
+     * Returns {p1, p99}: the 1st and 99th percentile of {@code pixels}.
+     * Package-private for testing.
+     */
+    static double[] percentileNormStats(double[] pixels) {
+        double[] sorted = pixels.clone();
+        Arrays.sort(sorted);
+        int n = sorted.length;
+        double p1  = sorted[(int) Math.round(0.01 * (n - 1))];
+        double p99 = sorted[(int) Math.round(0.99 * (n - 1))];
+        return new double[]{p1, p99};
     }
 
     /**
