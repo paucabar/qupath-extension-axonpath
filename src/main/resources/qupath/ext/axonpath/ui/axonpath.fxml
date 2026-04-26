@@ -157,7 +157,7 @@
             </TitledPane>
 
             <!-- Additional Options -->
-            <TitledPane animated="false" maxHeight="Infinity" text="%ui.options.pane" VBox.vgrow="NEVER">
+            <TitledPane animated="false" expanded="false" maxHeight="Infinity" text="%ui.options.pane" VBox.vgrow="NEVER">
                 <VBox alignment="TOP_CENTER" spacing="7.5" styleClass="standard-padding">
                     <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
                         <padding>
@@ -174,15 +174,30 @@
                 </VBox>
             </TitledPane>
             <!-- Review & Edit -->
-            <TitledPane animated="false" text="%ui.postprocess.pane" VBox.vgrow="NEVER">
+            <TitledPane animated="false" expanded="false" text="%ui.postprocess.pane" VBox.vgrow="NEVER">
                 <VBox alignment="TOP_CENTER" spacing="7.5" styleClass="standard-padding">
                     <padding>
                         <Insets left="10" right="10" top="10" bottom="10" />
                     </padding>
-                    <Button fx:id="convertToAnnotationsButton" prefWidth="252.0" disable="true"
-                            text="%ui.postprocess.convert" onAction="#convertToAnnotations">
-                        <tooltip><Tooltip text="%ui.postprocess.convert.tooltip" /></tooltip>
-                    </Button>
+                    <HBox spacing="5" alignment="CENTER_LEFT">
+                        <Button fx:id="convertToAnnotationsButton" disable="true"
+                                text="%ui.postprocess.convert" onAction="#convertToAnnotations"
+                                HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                            <tooltip><Tooltip text="%ui.postprocess.convert.tooltip" /></tooltip>
+                        </Button>
+                        <SegmentedButton fx:id="lockSegmentedButton">
+                            <buttons>
+                                <ToggleButton fx:id="lockAnnotationsButton" disable="true" onAction="#lockAnnotations">
+                                    <graphic><Text styleClass="fa-icon" text="&#xf023;" /></graphic>
+                                    <tooltip><Tooltip text="%ui.postprocess.lock.tooltip" /></tooltip>
+                                </ToggleButton>
+                                <ToggleButton fx:id="unlockAnnotationsButton" disable="true" onAction="#unlockAnnotations">
+                                    <graphic><Text styleClass="fa-icon" text="&#xf09c;" /></graphic>
+                                    <tooltip><Tooltip text="%ui.postprocess.unlock.tooltip" /></tooltip>
+                                </ToggleButton>
+                            </buttons>
+                        </SegmentedButton>
+                    </HBox>
                     <Button fx:id="recomputeButton" prefWidth="252.0" disable="true"
                             text="%ui.postprocess.recompute" onAction="#recompute">
                         <tooltip><Tooltip text="%ui.postprocess.recompute.tooltip" /></tooltip>
@@ -190,7 +205,7 @@
                 </VBox>
             </TitledPane>
             <!-- 3D Tracing -->
-            <TitledPane animated="false" text="%ui.tracing.pane" VBox.vgrow="NEVER">
+            <TitledPane animated="false" expanded="false" text="%ui.tracing.pane" VBox.vgrow="NEVER">
                 <VBox alignment="TOP_CENTER" spacing="7.5" styleClass="standard-padding">
                     <padding>
                         <Insets left="10" right="10" top="10" bottom="10" />
@@ -207,6 +222,18 @@
                     <Button fx:id="traceAxonsButton" prefWidth="252.0"
                             text="%ui.tracing.run" onAction="#traceAxons">
                         <tooltip><Tooltip text="%ui.tracing.run.tooltip" /></tooltip>
+                    </Button>
+                </VBox>
+            </TitledPane>
+            <!-- Data Export -->
+            <TitledPane animated="false" expanded="false" text="%ui.export.pane" VBox.vgrow="NEVER">
+                <VBox alignment="TOP_CENTER" spacing="7.5" styleClass="standard-padding">
+                    <padding>
+                        <Insets left="10" right="10" top="10" bottom="10" />
+                    </padding>
+                    <Button fx:id="exportMeasurementsButton" prefWidth="252.0" disable="true"
+                            text="%ui.export.open" onAction="#openExportDialog">
+                        <tooltip><Tooltip text="%ui.export.open.tooltip" /></tooltip>
                     </Button>
                 </VBox>
             </TitledPane>

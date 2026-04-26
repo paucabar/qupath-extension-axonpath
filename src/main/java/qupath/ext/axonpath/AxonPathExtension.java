@@ -28,7 +28,7 @@ public class AxonPathExtension implements QuPathExtension, GitHubProject {
 	private static final String EXTENSION_DESCRIPTION = resources.getString("extension.description");
 	private static final Version EXTENSION_QUPATH_VERSION = Version.parse("v0.7.0");
 	private static final GitHubRepo EXTENSION_REPOSITORY = GitHubRepo.create(
-			EXTENSION_NAME, "paucabar", "AimSeg_QuPath_Extension");
+			EXTENSION_NAME, "paucabar", "qupath-extension-axonpath");
 
 	private boolean isInstalled = false;
 

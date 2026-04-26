@@ -16,6 +16,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleButton;
 import javafx.scene.layout.BorderPane;
 import javafx.util.StringConverter;
 import org.controlsfx.control.SearchableComboBox;
@@ -27,6 +28,7 @@ import qupath.ext.axonpath.core.PredictionTools;
 import qupath.ext.axonpath.core.PytorchManager;
 import qupath.ext.axonpath.core.QuantificationTools;
 import qupath.ext.axonpath.core.TracingTools;
+import qupath.ext.axonpath.ui.ExportDialog;
 import qupath.fx.dialogs.Dialogs;
 import qupath.fx.dialogs.FileChoosers;
 import java.text.MessageFormat;
@@ -40,12 +42,14 @@ import qupath.lib.objects.PathObjects;
 import qupath.lib.objects.classes.PathClass;
 import qupath.lib.regions.ImagePlane;
 import qupath.lib.roi.ROIs;
+import qupath.lib.common.GeneralTools;
 import qupath.lib.scripting.QP;
 import javafx.fxml.FXMLLoader;
 
 public class AxonPathController extends BorderPane {
     private static final ResourceBundle resources = ResourceBundle.getBundle("qupath.ext.axonpath.ui.strings");
     private static final Logger logger = LoggerFactory.getLogger(AxonPathController.class);
+    private boolean isRunning = false;
 
     @FXML
     private SearchableComboBox<Path> modelChoiceBox;
@@ -59,6 +63,10 @@ public class AxonPathController extends BorderPane {
     private Button convertToAnnotationsButton;
     @FXML
     private Button recomputeButton;
+    @FXML
+    private ToggleButton lockAnnotationsButton;
+    @FXML
+    private ToggleButton unlockAnnotationsButton;
     @FXML
     private TextField pixelSizeField;
     @FXML
@@ -79,6 +87,8 @@ public class AxonPathController extends BorderPane {
     private Spinner<Double> minOverlapSpinner;
     @FXML
     private Button traceAxonsButton;
+    @FXML
+    private Button exportMeasurementsButton;
 
     private double defaultPixelSize;
     private double defaultMinDiameter;
@@ -122,6 +132,10 @@ public class AxonPathController extends BorderPane {
         // Refresh model params when selection changes
         modelChoiceBox.getSelectionModel().selectedItemProperty().addListener(
                 (obs, oldVal, newVal) -> refreshModelParams(newVal));
+
+        // Enable export button only when a project is open
+        exportMeasurementsButton.disableProperty().bind(
+                QuPathGUI.getInstance().projectProperty().isNull());
 
         // Refresh channels and post-processing buttons whenever the image changes
         QuPathGUI.getInstance().imageDataProperty().addListener(
@@ -188,10 +202,11 @@ public class AxonPathController extends BorderPane {
         final double finalPixelSize = pixelSize;
         final double finalMinDiameter = minDiameter;
 
+        isRunning = true;
         setStatusLabel(MessageFormat.format(
                 resources.getString("ui.run.progress"), 1, selectedObjects.size()));
-        runInferenceStep(selectedObjects, 0, modelPath, finalPixelSize, finalMinDiameter,
-                predictInnerCylinder, removeEdgeFibres, new int[]{0});
+        Platform.runLater(() -> runInferenceStep(selectedObjects, 0, modelPath, finalPixelSize, finalMinDiameter,
+                predictInnerCylinder, removeEdgeFibres, new int[]{0}));
     }
 
     /**
@@ -226,6 +241,7 @@ public class AxonPathController extends BorderPane {
     }
 
     private void onInferenceComplete(List<PathObject> parents, int[] totalObjects) {
+        isRunning = false;
         logger.info("{} total objects created by AxonPath", totalObjects[0]);
         var allFibres = parents.stream()
                 .flatMap(p -> p.getChildObjects().stream())
@@ -252,7 +268,11 @@ public class AxonPathController extends BorderPane {
         if (detections.isEmpty()) return;
 
         var annotations = detections.stream()
-                .map(d -> PathObjects.createAnnotationObject(d.getROI(), d.getPathClass()))
+                .map(d -> {
+                    var ann = PathObjects.createAnnotationObject(d.getROI(), d.getPathClass());
+                    ann.setLocked(true);
+                    return ann;
+                })
                 .toList();
 
         hierarchy.removeObjects(detections, false);
@@ -260,6 +280,51 @@ public class AxonPathController extends BorderPane {
         hierarchy.fireHierarchyChangedEvent(this);
 
         refreshPostProcessingButtons();
+    }
+
+    @FXML
+    private void lockAnnotations() {
+        setAxonPathAnnotationsLocked(true);
+        lockAnnotationsButton.setSelected(false);
+    }
+
+    @FXML
+    private void unlockAnnotations() {
+        setAxonPathAnnotationsLocked(false);
+        unlockAnnotationsButton.setSelected(false);
+    }
+
+    private void setAxonPathAnnotationsLocked(boolean locked) {
+        var imageData = QP.getCurrentImageData();
+        if (imageData == null) return;
+        var hierarchy = imageData.getHierarchy();
+        var allAxonPathAnnotations = hierarchy.getFlattenedObjectList(null).stream()
+                .filter(it -> isAxonPathClass(it) && it.isAnnotation())
+                .toList();
+        var toUpdate = QP.getSelectedObjects().stream()
+                .filter(p -> !isAxonPathClass(p))
+                .flatMap(p -> {
+                    var parentGeom = p.getROI().getGeometry();
+                    return allAxonPathAnnotations.stream()
+                            .filter(it -> {
+                                try {
+                                    if (parentGeom.intersects(it.getROI().getGeometry())) return true;
+                                    PathObject ancestor = it.getParent();
+                                    while (ancestor != null && isAxonPathClass(ancestor)) {
+                                        if (parentGeom.intersects(ancestor.getROI().getGeometry())) return true;
+                                        ancestor = ancestor.getParent();
+                                    }
+                                    return false;
+                                } catch (Exception e) {
+                                    return false;
+                                }
+                            });
+                })
+                .distinct()
+                .toList();
+        if (toUpdate.isEmpty()) return;
+        toUpdate.forEach(it -> it.setLocked(locked));
+        hierarchy.fireHierarchyChangedEvent(this);
     }
 
     @FXML
@@ -329,6 +394,7 @@ public class AxonPathController extends BorderPane {
                     .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
                     .toList();
             QuantificationTools.computeFeatures(imageData, validFibres);
+            QuantificationTools.computeIntensityFeatures(imageData, validFibres);
         }
 
         logger.info("Hierarchy and measurements recomputed");
@@ -351,12 +417,24 @@ public class AxonPathController extends BorderPane {
 
     @FXML
     private void selectAllAnnotations() {
-        QP.selectAnnotations();
+        var imageData = QP.getCurrentImageData();
+        if (imageData == null) return;
+        var hierarchy = imageData.getHierarchy();
+        var toSelect = hierarchy.getAnnotationObjects().stream()
+                .filter(a -> !isAxonPathClass(a))
+                .toList();
+        hierarchy.getSelectionModel().setSelectedObjects(toSelect, toSelect.isEmpty() ? null : toSelect.get(0));
     }
 
     @FXML
     private void selectAllDetections() {
-        QP.selectDetections();
+        var imageData = QP.getCurrentImageData();
+        if (imageData == null) return;
+        var hierarchy = imageData.getHierarchy();
+        var toSelect = hierarchy.getDetectionObjects().stream()
+                .filter(d -> !isAxonPathClass(d))
+                .toList();
+        hierarchy.getSelectionModel().setSelectedObjects(toSelect, toSelect.isEmpty() ? null : toSelect.get(0));
     }
 
     @FXML
@@ -484,10 +562,30 @@ public class AxonPathController extends BorderPane {
             if (imageData == null) { downsampleLabel.setText(""); return; }
             double imagePixelSize = imageData.getServer().getPixelCalibration().getAveragedPixelSizeMicrons();
             if (!Double.isFinite(imagePixelSize) || imagePixelSize <= 0) { downsampleLabel.setText(""); return; }
-            long downsample = Math.max(1, Math.round(targetPixelSize / imagePixelSize));
-            downsampleLabel.setText("(\u00d7" + downsample + ")");
+
+            double raw = targetPixelSize / imagePixelSize;
+            double downsample;
+            if (raw >= 0.9 && raw <= 1.1) {
+                downsample = 1.0;
+            } else {
+                double rounded = Math.round(raw);
+                downsample = GeneralTools.almostTheSame(raw, rounded, 0.01) ? rounded : raw;
+            }
+
+            String text = (downsample == Math.floor(downsample))
+                    ? "(\u00d7" + (long) downsample + ")"
+                    : String.format("(\u00d7%.2f)", downsample);
+            downsampleLabel.setText(text);
+
+            if (downsample < 1.0) {
+                if (!downsampleLabel.getStyleClass().contains("downsample-warning"))
+                    downsampleLabel.getStyleClass().add("downsample-warning");
+            } else {
+                downsampleLabel.getStyleClass().remove("downsample-warning");
+            }
         } catch (NumberFormatException e) {
             downsampleLabel.setText("");
+            downsampleLabel.getStyleClass().remove("downsample-warning");
         }
     }
 
@@ -580,19 +678,25 @@ public class AxonPathController extends BorderPane {
 
         convertToAnnotationsButton.setDisable(!hasAxonPathDetections);
         recomputeButton.setDisable(!hasAxonPathAnnotations);
+        lockAnnotationsButton.setDisable(!hasAxonPathAnnotations);
+        unlockAnnotationsButton.setDisable(!hasAxonPathAnnotations);
     }
 
     private void refreshStatusLabel() {
+        if (isRunning) return;
         var selected = QP.getSelectedObjects();
         boolean hasSelection = selected != null && !selected.isEmpty();
         labelMessage.setVisible(!hasSelection);
         labelMessage.setManaged(!hasSelection);
         if (!hasSelection) {
+            if (!labelMessage.getStyleClass().contains("error-message"))
+                labelMessage.getStyleClass().add("error-message");
             labelMessage.setText(resources.getString("ui.status.no-selection"));
         }
     }
 
     private void setStatusLabel(String text) {
+        labelMessage.getStyleClass().remove("error-message");
         labelMessage.setText(text);
         labelMessage.setVisible(true);
         labelMessage.setManaged(true);
@@ -609,5 +713,22 @@ public class AxonPathController extends BorderPane {
         } catch (Exception e) {
             return 1;
         }
+    }
+
+    @FXML
+    private void openExportDialog() {
+        var gui = QuPathGUI.getInstance();
+        var project = gui.getProject();
+        // Save current image data so export can read the latest measurements from disk
+        var imageData = gui.getImageData();
+        if (imageData != null && project != null) {
+            try {
+                var entry = project.getEntry(imageData);
+                if (entry != null) entry.saveImageData(imageData);
+            } catch (Exception e) {
+                logger.warn("Could not save image data before export", e);
+            }
+        }
+        ExportDialog.show((javafx.stage.Stage) getScene().getWindow(), project);
     }
 }
