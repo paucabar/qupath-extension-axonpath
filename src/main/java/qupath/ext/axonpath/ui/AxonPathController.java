@@ -614,13 +614,13 @@ public class AxonPathController extends BorderPane {
             var params = PredictionTools.extractParametersFromYaml(modelPath.resolve("rdf.yaml"));
             defaultPixelSize = (double) params.get("pixel_size");
             defaultMinDiameter = (double) params.get("min_diameter");
-            defaultPredictInnerCylinder = (boolean) params.get("predict_inner_tongue");
+            defaultPredictInnerCylinder = (boolean) params.get("predict_inner_cylinder");
             applyDefaultParams();
             pixelSizeField.setDisable(false);
             minDiameterField.setDisable(false);
             predictInnerCylinderCheckBox.setDisable(false);
             resetParamsButton.setDisable(false);
-        } catch (IOException e) {
+        } catch (Exception e) {
             logger.error("Could not read model parameters from rdf.yaml", e);
         }
     }
