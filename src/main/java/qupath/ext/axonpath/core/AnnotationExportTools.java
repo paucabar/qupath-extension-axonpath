@@ -151,49 +151,55 @@ public class AnnotationExportTools {
                         }
                     }
                 } else {
-                    // Whole-image fallback: one tile per z-slice / timepoint
-                    for (int z = 0; z < nZ; z++) {
-                        for (int t = 0; t < nT; t++) {
-                            String suf = base + "_roi0" + planeSuffix(z, t, multiZ, multiT) + ".tif";
-                            int finalZ = z, finalT = t;
+                    // Whole-image fallback: export only planes that have classified annotations
+                    var classifiedPlanes = hierarchy.getAnnotationObjects().stream()
+                            .filter(a -> a.getPathClass() == fibreClass
+                                      || a.getPathClass() == innerCylinderClass
+                                      || a.getPathClass() == axonClass)
+                            .map(a -> a.getROI().getImagePlane())
+                            .distinct()
+                            .toList();
 
-                            try (var semanticServer = new LabeledImageServer.Builder(imageData)
-                                    .backgroundLabel(0, ColorTools.BLACK)
-                                    .downsample(downsample)
-                                    .addLabel("Fibre",         1)
-                                    .addLabel("InnerCylinder", 2)
-                                    .addLabel("Axon",          3)
-                                    .multichannelOutput(false)
-                                    .useFilter(p -> p.isAnnotation()
-                                            && p.getROI().getImagePlane().getZ() == finalZ
-                                            && p.getROI().getImagePlane().getT() == finalT)
-                                    .build();
-                                 var instanceServer = new LabeledImageServer.Builder(imageData)
-                                    .backgroundLabel(0, ColorTools.BLACK)
-                                    .downsample(downsample)
-                                    .useAnnotations()
-                                    .useInstanceLabels()
-                                    .useFilter(p -> p.isAnnotation()
-                                            && p.getPathClass() == fibreClass
-                                            && p.getROI().getImagePlane().getZ() == finalZ
-                                            && p.getROI().getImagePlane().getT() == finalT)
-                                    .multichannelOutput(false)
-                                    .build()) {
+                    for (var plane : classifiedPlanes) {
+                        int z = plane.getZ();
+                        int t = plane.getT();
+                        String suf = base + "_roi0" + planeSuffix(z, t, multiZ, multiT) + ".tif";
 
-                                var request = RegionRequest.createInstance(server.getPath(), downsample,
-                                        0, 0, server.getWidth(), server.getHeight(), z, t);
-                                ImageWriterTools.writeImageRegion(server,
-                                        request,
-                                        new File(imageDir,  suf).getAbsolutePath());
-                                ImageWriterTools.writeImageRegion(semanticServer,
-                                        RegionRequest.createInstance(semanticServer.getPath(), downsample,
-                                                0, 0, server.getWidth(), server.getHeight(), z, t),
-                                        new File(masksDir,  suf).getAbsolutePath());
-                                ImageWriterTools.writeImageRegion(instanceServer,
-                                        RegionRequest.createInstance(instanceServer.getPath(), downsample,
-                                                0, 0, server.getWidth(), server.getHeight(), z, t),
-                                        new File(labelsDir, suf).getAbsolutePath());
-                            }
+                        try (var semanticServer = new LabeledImageServer.Builder(imageData)
+                                .backgroundLabel(0, ColorTools.BLACK)
+                                .downsample(downsample)
+                                .addLabel("Fibre",         1)
+                                .addLabel("InnerCylinder", 2)
+                                .addLabel("Axon",          3)
+                                .multichannelOutput(false)
+                                .useFilter(p -> p.isAnnotation()
+                                        && p.getROI().getImagePlane().getZ() == z
+                                        && p.getROI().getImagePlane().getT() == t)
+                                .build();
+                             var instanceServer = new LabeledImageServer.Builder(imageData)
+                                .backgroundLabel(0, ColorTools.BLACK)
+                                .downsample(downsample)
+                                .useAnnotations()
+                                .useInstanceLabels()
+                                .useFilter(p -> p.isAnnotation()
+                                        && p.getPathClass() == fibreClass
+                                        && p.getROI().getImagePlane().getZ() == z
+                                        && p.getROI().getImagePlane().getT() == t)
+                                .multichannelOutput(false)
+                                .build()) {
+
+                            ImageWriterTools.writeImageRegion(server,
+                                    RegionRequest.createInstance(server.getPath(), downsample,
+                                            0, 0, server.getWidth(), server.getHeight(), z, t),
+                                    new File(imageDir,  suf).getAbsolutePath());
+                            ImageWriterTools.writeImageRegion(semanticServer,
+                                    RegionRequest.createInstance(semanticServer.getPath(), downsample,
+                                            0, 0, server.getWidth(), server.getHeight(), z, t),
+                                    new File(masksDir,  suf).getAbsolutePath());
+                            ImageWriterTools.writeImageRegion(instanceServer,
+                                    RegionRequest.createInstance(instanceServer.getPath(), downsample,
+                                            0, 0, server.getWidth(), server.getHeight(), z, t),
+                                    new File(labelsDir, suf).getAbsolutePath());
                         }
                     }
                 }
