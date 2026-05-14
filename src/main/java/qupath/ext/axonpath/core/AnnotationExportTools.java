@@ -6,8 +6,10 @@ import qupath.lib.common.ColorTools;
 import qupath.lib.images.servers.LabeledImageServer;
 import qupath.lib.images.writers.ImageWriterTools;
 import qupath.lib.io.PathIO;
+import qupath.lib.objects.PathObjects;
 import qupath.lib.objects.classes.PathClass;
 import qupath.lib.projects.ProjectImageEntry;
+import qupath.lib.regions.ImagePlane;
 import qupath.lib.regions.RegionRequest;
 
 import java.awt.image.BufferedImage;
@@ -20,6 +22,10 @@ import java.util.function.Consumer;
 /**
  * Tools for exporting AxonPath annotation data, either as training-ready image/label tiles
  * or as full-resolution images with GeoJSON annotation files.
+ * <p>
+ * Both methods handle z-stacks and time-lapse data: output filenames include a {@code _z{n}}
+ * suffix for z-stacks, {@code _t{n}} for time-lapse, or both for 3D time-series.
+ * Single-plane images use no suffix, preserving the existing 2D naming convention.
  */
 public class AnnotationExportTools {
 
@@ -40,7 +46,7 @@ public class AnnotationExportTools {
      *   outputDir/labels/  — fibre instance labels (unique integer per Fibre)
      * </pre>
      * ROI convention: unclassified annotation objects define export regions.
-     * If none are present the whole image is exported as {@code _roi0}.
+     * If none are present the whole image is exported, one tile per z-slice/timepoint.
      * The {@code _roi<n>} suffix is always written regardless of the number of ROIs.
      * <p>
      * Images with no classified annotations are still exported (masks and labels
@@ -73,8 +79,8 @@ public class AnnotationExportTools {
 
         int n = images.size();
         for (int i = 0; i < n; i++) {
-            var entry     = images.get(i);
-            String name   = entry.getImageName();
+            var entry   = images.get(i);
+            String name = entry.getImageName();
             if (onProgress != null) onProgress.accept(name, (double) i / n);
 
             try (var imageData = entry.readImageData()) {
@@ -86,38 +92,53 @@ public class AnnotationExportTools {
                 var hierarchy = imageData.getHierarchy();
                 String base   = baseName(server.getMetadata().getName());
 
-                try (var semanticServer = new LabeledImageServer.Builder(imageData)
-                        .backgroundLabel(0, ColorTools.BLACK)
-                        .downsample(downsample)
-                        .addLabel("Fibre",         1)
-                        .addLabel("InnerCylinder", 2)
-                        .addLabel("Axon",          3)
-                        .multichannelOutput(false)
-                        .build();
-                     var instanceServer = new LabeledImageServer.Builder(imageData)
-                        .backgroundLabel(0, ColorTools.BLACK)
-                        .downsample(downsample)
-                        .useAnnotations()
-                        .useInstanceLabels()
-                        .useFilter(p -> p.isAnnotation() && p.getPathClass() == fibreClass)
-                        .multichannelOutput(false)
-                        .build()) {
+                int nZ = server.nZSlices();
+                int nT = server.nTimepoints();
+                boolean multiZ = nZ > 1;
+                boolean multiT = nT > 1;
 
-                    boolean hasClassified = hierarchy.getAnnotationObjects().stream()
-                            .anyMatch(a -> a.getPathClass() == fibreClass
-                                        || a.getPathClass() == innerCylinderClass
-                                        || a.getPathClass() == axonClass);
-                    if (!hasClassified && onWarn != null)
-                        onWarn.accept(name);
+                boolean hasClassified = hierarchy.getAnnotationObjects().stream()
+                        .anyMatch(a -> a.getPathClass() == fibreClass
+                                    || a.getPathClass() == innerCylinderClass
+                                    || a.getPathClass() == axonClass);
+                if (!hasClassified && onWarn != null)
+                    onWarn.accept(name);
 
-                    var rois = hierarchy.getAnnotationObjects().stream()
-                            .filter(a -> a.getPathClass() == null)
-                            .toList();
+                var rois = hierarchy.getAnnotationObjects().stream()
+                        .filter(a -> a.getPathClass() == null)
+                        .toList();
 
-                    if (!rois.isEmpty()) {
-                        for (int j = 0; j < rois.size(); j++) {
-                            var roi    = rois.get(j).getROI();
-                            String suf = base + "_roi" + j + ".tif";
+                if (!rois.isEmpty()) {
+                    // ROI-based: one tile per ROI; plane determined by the ROI's own image plane
+                    for (int j = 0; j < rois.size(); j++) {
+                        var roi   = rois.get(j).getROI();
+                        int z     = roi.getImagePlane().getZ();
+                        int t     = roi.getImagePlane().getT();
+                        String suf = base + "_roi" + j + planeSuffix(z, t, multiZ, multiT) + ".tif";
+
+                        try (var semanticServer = new LabeledImageServer.Builder(imageData)
+                                .backgroundLabel(0, ColorTools.BLACK)
+                                .downsample(downsample)
+                                .addLabel("Fibre",         1)
+                                .addLabel("InnerCylinder", 2)
+                                .addLabel("Axon",          3)
+                                .multichannelOutput(false)
+                                .useFilter(p -> p.isAnnotation()
+                                        && p.getROI().getImagePlane().getZ() == z
+                                        && p.getROI().getImagePlane().getT() == t)
+                                .build();
+                             var instanceServer = new LabeledImageServer.Builder(imageData)
+                                .backgroundLabel(0, ColorTools.BLACK)
+                                .downsample(downsample)
+                                .useAnnotations()
+                                .useInstanceLabels()
+                                .useFilter(p -> p.isAnnotation()
+                                        && p.getPathClass() == fibreClass
+                                        && p.getROI().getImagePlane().getZ() == z
+                                        && p.getROI().getImagePlane().getT() == t)
+                                .multichannelOutput(false)
+                                .build()) {
+
                             ImageWriterTools.writeImageRegion(server,
                                     RegionRequest.createInstance(server.getPath(), downsample, roi),
                                     new File(imageDir,  suf).getAbsolutePath());
@@ -128,17 +149,52 @@ public class AnnotationExportTools {
                                     RegionRequest.createInstance(instanceServer.getPath(), downsample, roi),
                                     new File(labelsDir, suf).getAbsolutePath());
                         }
-                    } else {
-                        String suf = base + "_roi0.tif";
-                        ImageWriterTools.writeImageRegion(server,
-                                RegionRequest.createInstance(server, downsample),
-                                new File(imageDir,  suf).getAbsolutePath());
-                        ImageWriterTools.writeImageRegion(semanticServer,
-                                RegionRequest.createInstance(semanticServer, downsample),
-                                new File(masksDir,  suf).getAbsolutePath());
-                        ImageWriterTools.writeImageRegion(instanceServer,
-                                RegionRequest.createInstance(instanceServer, downsample),
-                                new File(labelsDir, suf).getAbsolutePath());
+                    }
+                } else {
+                    // Whole-image fallback: one tile per z-slice / timepoint
+                    for (int z = 0; z < nZ; z++) {
+                        for (int t = 0; t < nT; t++) {
+                            String suf = base + "_roi0" + planeSuffix(z, t, multiZ, multiT) + ".tif";
+                            int finalZ = z, finalT = t;
+
+                            try (var semanticServer = new LabeledImageServer.Builder(imageData)
+                                    .backgroundLabel(0, ColorTools.BLACK)
+                                    .downsample(downsample)
+                                    .addLabel("Fibre",         1)
+                                    .addLabel("InnerCylinder", 2)
+                                    .addLabel("Axon",          3)
+                                    .multichannelOutput(false)
+                                    .useFilter(p -> p.isAnnotation()
+                                            && p.getROI().getImagePlane().getZ() == finalZ
+                                            && p.getROI().getImagePlane().getT() == finalT)
+                                    .build();
+                                 var instanceServer = new LabeledImageServer.Builder(imageData)
+                                    .backgroundLabel(0, ColorTools.BLACK)
+                                    .downsample(downsample)
+                                    .useAnnotations()
+                                    .useInstanceLabels()
+                                    .useFilter(p -> p.isAnnotation()
+                                            && p.getPathClass() == fibreClass
+                                            && p.getROI().getImagePlane().getZ() == finalZ
+                                            && p.getROI().getImagePlane().getT() == finalT)
+                                    .multichannelOutput(false)
+                                    .build()) {
+
+                                var request = RegionRequest.createInstance(server.getPath(), downsample,
+                                        0, 0, server.getWidth(), server.getHeight(), z, t);
+                                ImageWriterTools.writeImageRegion(server,
+                                        request,
+                                        new File(imageDir,  suf).getAbsolutePath());
+                                ImageWriterTools.writeImageRegion(semanticServer,
+                                        RegionRequest.createInstance(semanticServer.getPath(), downsample,
+                                                0, 0, server.getWidth(), server.getHeight(), z, t),
+                                        new File(masksDir,  suf).getAbsolutePath());
+                                ImageWriterTools.writeImageRegion(instanceServer,
+                                        RegionRequest.createInstance(instanceServer.getPath(), downsample,
+                                                0, 0, server.getWidth(), server.getHeight(), z, t),
+                                        new File(labelsDir, suf).getAbsolutePath());
+                            }
+                        }
                     }
                 }
 
@@ -154,9 +210,11 @@ public class AnnotationExportTools {
      * <p>
      * Output structure:
      * <pre>
-     *   outputDir/images/      — full-resolution TIF images
-     *   outputDir/annotations/ — GeoJSON files containing all annotation objects
+     *   outputDir/images/      — full-resolution TIF images, one per annotated plane
+     *   outputDir/annotations/ — GeoJSON files, one per annotated plane (matching image names)
      * </pre>
+     * Only planes that contain at least one annotation object are exported; empty planes
+     * are skipped. Each GeoJSON contains only the annotations from its paired plane.
      * All annotation objects are exported regardless of class, making the output
      * suitable for backup or redistribution as a general-purpose annotated dataset.
      *
@@ -186,23 +244,59 @@ public class AnnotationExportTools {
                     logger.warn("Could not read image data for '{}'", name);
                     continue;
                 }
-                var server = imageData.getServer();
+                var server  = imageData.getServer();
                 String base = baseName(server.getMetadata().getName());
 
-                ImageWriterTools.writeImageRegion(server,
-                        RegionRequest.createInstance(server, 1.0),
-                        new File(imageDir, base + ".tif").getAbsolutePath());
+                boolean multiZ = server.nZSlices() > 1;
+                boolean multiT = server.nTimepoints() > 1;
 
-                PathIO.exportObjectsAsGeoJSON(
-                        new File(annotationsDir, base + ".geojson"),
-                        imageData.getHierarchy().getAnnotationObjects(),
-                        PathIO.GeoJsonExportOptions.FEATURE_COLLECTION);
+                // One TIF per annotated plane — skip planes with no annotations
+                var annotatedPlanes = imageData.getHierarchy().getAnnotationObjects().stream()
+                        .map(a -> a.getROI().getImagePlane())
+                        .distinct()
+                        .toList();
+
+                for (var plane : annotatedPlanes) {
+                    int z = plane.getZ();
+                    int t = plane.getT();
+                    String suf = base + planeSuffix(z, t, multiZ, multiT);
+
+                    ImageWriterTools.writeImageRegion(server,
+                            RegionRequest.createInstance(server.getPath(), 1.0,
+                                    0, 0, server.getWidth(), server.getHeight(), z, t),
+                            new File(imageDir, suf + ".tif").getAbsolutePath());
+
+                    // Remap annotations to the default plane (z=0, t=0) so the GeoJSON
+                    // loads correctly when the paired TIF is opened as a 2D image in QuPath
+                    var defaultPlane = ImagePlane.getDefaultPlane();
+                    var planeAnnotations = imageData.getHierarchy().getAnnotationObjects().stream()
+                            .filter(a -> a.getROI().getImagePlane().equals(plane))
+                            .map(a -> PathObjects.createAnnotationObject(
+                                    a.getROI().updatePlane(defaultPlane),
+                                    a.getPathClass()))
+                            .toList();
+                    PathIO.exportObjectsAsGeoJSON(
+                            new File(annotationsDir, suf + ".geojson"),
+                            planeAnnotations,
+                            PathIO.GeoJsonExportOptions.FEATURE_COLLECTION);
+                }
 
             } catch (Exception e) {
                 logger.warn("exportRaw: could not process '{}': {}", name, e.getMessage(), e);
             }
         }
         if (onProgress != null) onProgress.accept("Done", 1.0);
+    }
+
+    /**
+     * Returns a filename suffix encoding the z-slice and/or timepoint when relevant.
+     * Returns an empty string for single-plane images (no suffix needed).
+     */
+    private static String planeSuffix(int z, int t, boolean multiZ, boolean multiT) {
+        String s = "";
+        if (multiZ) s += "_z" + z;
+        if (multiT) s += "_t" + t;
+        return s;
     }
 
     private static String baseName(String name) {
