@@ -89,6 +89,8 @@ public class AxonPathController extends BorderPane {
     private Button traceAxonsButton;
     @FXML
     private Button exportMeasurementsButton;
+    @FXML
+    private Button exportAnnotationsButton;
 
     private double defaultPixelSize;
     private double defaultMinDiameter;
@@ -133,9 +135,10 @@ public class AxonPathController extends BorderPane {
         modelChoiceBox.getSelectionModel().selectedItemProperty().addListener(
                 (obs, oldVal, newVal) -> refreshModelParams(newVal));
 
-        // Enable export button only when a project is open
-        exportMeasurementsButton.disableProperty().bind(
-                QuPathGUI.getInstance().projectProperty().isNull());
+        // Enable export buttons only when a project is open
+        var noProject = QuPathGUI.getInstance().projectProperty().isNull();
+        exportMeasurementsButton.disableProperty().bind(noProject);
+        exportAnnotationsButton.disableProperty().bind(noProject);
 
         // Refresh channels and post-processing buttons whenever the image changes
         QuPathGUI.getInstance().imageDataProperty().addListener(
@@ -730,5 +733,22 @@ public class AxonPathController extends BorderPane {
             }
         }
         ExportDialog.show((javafx.stage.Stage) getScene().getWindow(), project);
+    }
+
+    @FXML
+    private void openAnnotationExportDialog() {
+        var gui = QuPathGUI.getInstance();
+        var project = gui.getProject();
+        // Save current image data so the exporter sees the latest annotations from disk
+        var imageData = gui.getImageData();
+        if (imageData != null && project != null) {
+            try {
+                var entry = project.getEntry(imageData);
+                if (entry != null) entry.saveImageData(imageData);
+            } catch (Exception e) {
+                logger.warn("Could not save image data before annotation export", e);
+            }
+        }
+        AnnotationExportDialog.show((javafx.stage.Stage) getScene().getWindow(), project);
     }
 }

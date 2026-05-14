@@ -235,6 +235,10 @@
                             text="%ui.export.open" onAction="#openExportDialog">
                         <tooltip><Tooltip text="%ui.export.open.tooltip" /></tooltip>
                     </Button>
+                    <Button fx:id="exportAnnotationsButton" prefWidth="252.0" disable="true"
+                            text="%ui.export.annotations" onAction="#openAnnotationExportDialog">
+                        <tooltip><Tooltip text="%ui.export.annotations.tooltip" /></tooltip>
+                    </Button>
                 </VBox>
             </TitledPane>
         </VBox>
