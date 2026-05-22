@@ -230,7 +230,7 @@ public class PredictionTools {
     }
 
     /**
-     * Performs instance segmentation on a Signed Distance Transform (SDT) channel
+     * Performs instance segmentation on a Skeleton Distance Transform (SDT) channel
      * of the model prediction.
      * <p>
      * The pipeline is:
@@ -465,7 +465,7 @@ public class PredictionTools {
         int[] inputShape = new int[]{1, 1, 512, 512};
         ImagePlus prediction = modelInference(
                 modelPath.resolve("weights.pt").toUri(),
-                "NCHW", 512, 512, Padding.symmetric(32), inputShape,
+                "NCHW", 512, 512, Padding.symmetric(64), inputShape,
                 imageData, server, request, channel, device);
 
         // Post-process prediction channels into QuPath objects
