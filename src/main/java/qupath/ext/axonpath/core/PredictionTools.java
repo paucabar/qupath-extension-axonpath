@@ -5,6 +5,7 @@ import ij.ImagePlus;
 import ij.measure.Calibration;
 import ij.measure.Measurements;
 import ij.measure.ResultsTable;
+import ij.plugin.filter.GaussianBlur;
 import ij.plugin.filter.ParticleAnalyzer;
 import ij.plugin.frame.RoiManager;
 import ij.process.ImageProcessor;
@@ -235,10 +236,12 @@ public class PredictionTools {
      * <p>
      * The pipeline is:
      * <ol>
-     *   <li>Threshold the SDT channel to get seed regions</li>
+     *   <li>Apply a Gaussian pre-smooth (σ=1.5 inference pixels) to suppress prediction
+     *       valleys that would otherwise split large objects into multiple seeds</li>
+     *   <li>Threshold the smoothed SDT channel to get seed regions</li>
      *   <li>Add seeds to the hierarchy and render them as a 16-bit label image
      *       via a {@link LabeledImageServer}</li>
-     *   <li>Apply a 2D watershed using the SDT channel as intensity guidance</li>
+     *   <li>Apply a 2D watershed using the <em>unsmoothed</em> SDT channel as intensity guidance</li>
      *   <li>Convert the resulting label image back to QuPath annotation objects</li>
      * </ol>
      * Seeds smaller than 30% of the expected minimum object diameter are filtered out.
@@ -253,12 +256,18 @@ public class PredictionTools {
                                              ImageData<BufferedImage> imageData,
                                              RegionRequest request,
                                              double translateX, double translateY) throws IOException {
-        // Threshold the SDT channel to obtain seed regions
         prediction.setC(channel);
         ImageProcessor sdtChannel = prediction.getProcessor().duplicate();
-        sdtChannel.setThreshold(minThreshold, maxThreshold, ImageProcessor.NO_LUT_UPDATE);
 
-        var thresholdedROI = SimpleThresholding.thresholdToROI(sdtChannel, request);
+        // Smooth a copy of the SDT for seed extraction only.
+        // A Gaussian pre-smooth suppresses prediction valleys that would otherwise split
+        // large objects into multiple seeds. σ=1.5 inference pixels matches the Python pipeline.
+        // The unsmoothed sdtChannel is kept for the watershed gradient.
+        ImageProcessor sdtSmoothed = sdtChannel.duplicate();
+        new GaussianBlur().blurGaussian(sdtSmoothed, 1.5);
+        sdtSmoothed.setThreshold(minThreshold, maxThreshold, ImageProcessor.NO_LUT_UPDATE);
+
+        var thresholdedROI = SimpleThresholding.thresholdToROI(sdtSmoothed, request);
         if (thresholdedROI == null) {
             logger.warn("processSDT ({}): no regions found above threshold", className);
             return java.util.Collections.emptySet();
