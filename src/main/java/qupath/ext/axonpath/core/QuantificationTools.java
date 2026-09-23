@@ -186,7 +186,7 @@ public class QuantificationTools {
                     .collect(Collectors.toList());
 
             if (icROIs.isEmpty() || axonROIs.isEmpty()) {
-                logger.debug("Skipping intensity features for fibre {} — missing InnerCylinder or Axon children", fibre.getID());
+                logger.debug("Skipping intensity features for fibre {} - missing InnerCylinder or Axon children", fibre.getID());
                 return;
             }
 
@@ -219,7 +219,7 @@ public class QuantificationTools {
                     .collect(Collectors.toList());
 
             if (axonROIs.isEmpty()) {
-                logger.debug("Skipping intensity features for fibre {} — no Axon children", fibre.getID());
+                logger.debug("Skipping intensity features for fibre {} - no Axon children", fibre.getID());
                 return;
             }
 

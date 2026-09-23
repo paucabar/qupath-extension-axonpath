@@ -106,7 +106,7 @@ public class HierarchyTools {
         Collection<PathObject> boundedFibres = clipToParentBoundary(rootObject, fibres);
         Collection<PathObject> boundedAxons = clipToParentBoundary(rootObject, axons);
         Collection<PathObject> boundedInnerCylinders = clipToParentBoundary(rootObject, innerCylinders);
-        logger.info("Clipped to parent boundary: fibres {} → {}, axons {} → {}, inner cylinders {} → {}",
+        logger.info("Clipped to parent boundary: fibres {} -> {}, axons {} -> {}, inner cylinders {} -> {}",
                 fibres.size(), boundedFibres.size(), axons.size(), boundedAxons.size(),
                 innerCylinders.size(), boundedInnerCylinders.size());
 

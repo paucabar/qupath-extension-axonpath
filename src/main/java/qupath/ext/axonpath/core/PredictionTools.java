@@ -91,12 +91,12 @@ public class PredictionTools {
         // with scale augmentation covering the same range.
         if (downsampleFactor >= 0.9 && downsampleFactor <= 1.1) {
             if (downsampleFactor != 1.0)
-                logger.debug("Pixel size difference within ±10% tolerance (factor = {}), skipping resampling.", downsampleFactor);
+                logger.debug("Pixel size difference within +/-10% tolerance (factor = {}), skipping resampling.", downsampleFactor);
             return 1.0;
         }
 
         if (downsampleFactor < 1) {
-            logger.warn("Target pixel size ({} µm) is smaller than image pixel size ({} µm). " +
+            logger.warn("Target pixel size ({} um) is smaller than image pixel size ({} um). " +
                     "Upsampling will be applied (factor = {}).",
                     targetPixelSizeMicrons, imagePixelSizeMicrons, downsampleFactor);
         }
@@ -317,7 +317,7 @@ public class PredictionTools {
         // ArrayIndexOutOfBoundsException inside Watershed. Resize sdtChannel to match if needed.
         if (sdtChannel.getWidth() != labelProcessor.getWidth() ||
                 sdtChannel.getHeight() != labelProcessor.getHeight()) {
-            logger.warn("processSDT ({}): SDT size {}×{} ≠ label size {}×{}, resizing SDT to match",
+            logger.warn("processSDT ({}): SDT size {}x{} != label size {}x{}, resizing SDT to match",
                     className, sdtChannel.getWidth(), sdtChannel.getHeight(),
                     labelProcessor.getWidth(), labelProcessor.getHeight());
             sdtChannel.setInterpolationMethod(ImageProcessor.BILINEAR);
@@ -336,7 +336,7 @@ public class PredictionTools {
         ImagePlane plane = request.getImagePlane();
         Calibration calibration = prediction.getCalibration();
 
-        logger.info("processSDT ({}): {} seeds → {} detected objects", className, seedObjects.size(), detectedROIs.size());
+        logger.info("processSDT ({}): {} seeds -> {} detected objects", className, seedObjects.size(), detectedROIs.size());
 
         return detectedROIs.stream()
                 .map(roiIJ -> {
@@ -430,7 +430,8 @@ public class PredictionTools {
      * @param minDiameter        minimum object diameter in pixels for seed filtering
      * @param predictInnerCylinder whether to predict inner cylinder structures
      * @param removeEdgeFibres     whether to remove fibres touching the parent boundary after hierarchy is built
-     * @return all objects created by the pipeline (fibres, axons, and optionally inner cylinders)
+     * @return the AxonPath objects left in the hierarchy under the parent after hierarchy building
+     *         and filtering: fibres plus their inner cylinder and axon descendants
      */
     public static Collection<PathObject> runAxonPath(Path modelPath,
                                                    ImageData<BufferedImage> imageData,
@@ -453,7 +454,7 @@ public class PredictionTools {
         double minDiameterPixels = minDiameter;
         boolean predictInnerCylinderFlag = predictInnerCylinder;
 
-        logger.info("Model parameters: pixel_size={} µm, min_diameter={} px, predict_inner_cylinder={}",
+        logger.info("Model parameters: pixel_size={} um, min_diameter={} px, predict_inner_cylinder={}",
                 targetPixelSizeMicrons, minDiameterPixels, predictInnerCylinderFlag);
 
         double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons);
@@ -517,8 +518,10 @@ public class PredictionTools {
             parentObject.setLocked(true);
         }
 
-        return Stream.of(fibres.stream(), axons.stream(), innerCylinders.stream())
-                .flatMap(s -> s)
+        // Return what actually ended up in the hierarchy: updateHierarchy() replaces objects with
+        // clipped copies and drops incomplete fibres, so the raw fibres/axons lists are stale here
+        return validFibres.stream()
+                .flatMap(fibre -> Stream.concat(Stream.of(fibre), HierarchyTools.getAllDescendants(fibre).stream()))
                 .collect(Collectors.toSet());
     }
 }
