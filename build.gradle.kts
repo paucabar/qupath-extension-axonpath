@@ -25,6 +25,8 @@ dependencies {
 
     // For testing
     testImplementation(libs.junit)
+    // Gradle 9 no longer puts the JUnit Platform launcher on the test classpath automatically
+    testRuntimeOnly(libs.junit.platform)
 
 }
 
