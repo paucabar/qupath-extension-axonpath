@@ -23,6 +23,7 @@ import org.controlsfx.control.SearchableComboBox;
 import org.controlsfx.dialog.ProgressDialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import qupath.ext.axonpath.core.AxonPathClasses;
 import qupath.ext.axonpath.core.HierarchyTools;
 import qupath.ext.axonpath.core.PredictionTools;
 import qupath.ext.axonpath.core.PytorchManager;
@@ -205,6 +206,7 @@ public class AxonPathController extends BorderPane {
         final double finalPixelSize = pixelSize;
         final double finalMinDiameter = minDiameter;
 
+        ensureAxonPathClasses();
         isRunning = true;
         setStatusLabel(MessageFormat.format(
                 resources.getString("ui.run.progress"), 1, selectedObjects.size()));
@@ -270,6 +272,7 @@ public class AxonPathController extends BorderPane {
 
         if (detections.isEmpty()) return;
 
+        ensureAxonPathClasses();
         var annotations = detections.stream()
                 .map(d -> {
                     var ann = PathObjects.createAnnotationObject(d.getROI(), d.getPathClass());
@@ -283,6 +286,14 @@ public class AxonPathController extends BorderPane {
         hierarchy.fireHierarchyChangedEvent(this);
 
         refreshPostProcessingButtons();
+    }
+
+    /**
+     * Adds any missing AxonPath classes to QuPath's class list. Called before each action
+     * because opening a project (possibly while this window is open) replaces that list.
+     */
+    private void ensureAxonPathClasses() {
+        AxonPathClasses.ensureClassesAvailable(QuPathGUI.getInstance().getAvailablePathClasses());
     }
 
     @FXML
@@ -308,7 +319,15 @@ public class AxonPathController extends BorderPane {
                 .filter(p -> !isAxonPathClass(p))
                 .flatMap(p -> {
                     var parentGeom = p.getROI().getGeometry();
+                    var parentPlane = p.getROI().getImagePlane();
+                    // Restricted to the parent's own z/t plane: without this, on a z-stack where
+                    // fibres occupy similar XY footprints across slices, a selected parent on one
+                    // slice would lock/unlock annotations belonging to other slices too — the
+                    // geometry intersection check below is 2D (X,Y) only and ignores Z entirely.
+                    // Same root cause as recomputeForParent()'s z/t fix.
                     return allAxonPathAnnotations.stream()
+                            .filter(it -> it.getROI().getImagePlane().getZ() == parentPlane.getZ()
+                                    && it.getROI().getImagePlane().getT() == parentPlane.getT())
                             .filter(it -> {
                                 try {
                                     if (parentGeom.intersects(it.getROI().getGeometry())) return true;
@@ -332,76 +351,120 @@ public class AxonPathController extends BorderPane {
 
     @FXML
     private void recompute() {
+        if (QP.getCurrentImageData() == null) return;
+
+        var parents = QP.getSelectedObjects().stream()
+                .filter(p -> {
+                    if (isAxonPathClass(p)) {
+                        logger.info("Skipping AxonPath-classed object as parent: {}", p);
+                        return false;
+                    }
+                    return true;
+                })
+                .toList();
+        if (parents.isEmpty()) return;
+
+        ensureAxonPathClasses();
+        isRunning = true;
+        setStatusLabel(MessageFormat.format(
+                resources.getString("ui.run.progress"), 1, parents.size()));
+        Platform.runLater(() -> recomputeStep(parents, 0));
+    }
+
+    /**
+     * Processes one parent object per FX pulse, mirroring {@link #runInferenceStep}: yields
+     * between each so the status label repaints and the UI stays responsive. A fully-selected
+     * 3D z-stack can mean recomputing dozens of parents at once — without yielding, the whole
+     * batch would run as a single unbroken block on the FX thread.
+     */
+    private void recomputeStep(List<PathObject> parents, int index) {
+        Platform.runLater(() -> {
+            recomputeForParent(parents.get(index));
+
+            int next = index + 1;
+            if (next < parents.size()) {
+                setStatusLabel(MessageFormat.format(
+                        resources.getString("ui.run.progress"), next + 1, parents.size()));
+                recomputeStep(parents, next);
+            } else {
+                isRunning = false;
+                logger.info("Hierarchy and measurements recomputed");
+                refreshPostProcessingButtons();
+            }
+        });
+    }
+
+    private void recomputeForParent(PathObject parentObject) {
         var imageData = QP.getCurrentImageData();
         if (imageData == null) return;
+        var hierarchy = imageData.getHierarchy();
+        var parentROI = parentObject.getROI();
+        var parentPlane = parentROI.getImagePlane();
 
-        for (var parentObject : QP.getSelectedObjects()) {
-            if (isAxonPathClass(parentObject)) {
-                logger.info("Skipping AxonPath-classed object as parent: {}", parentObject);
-                continue;
-            }
-            var hierarchy = imageData.getHierarchy();
-            var parentROI = parentObject.getROI();
-
-            // Collect all AxonPath annotations that either directly intersect the parent, or
-            // have a QuPath ancestor (fibre) that intersects the parent. The ancestor check handles
-            // annotations created from scratch where QuPath places the axon as a child of the fibre
-            // in the hierarchy, even when the axon lies outside the parent boundary.
-            var parentGeom = parentROI.getGeometry();
-            var allAxonPath = hierarchy.getFlattenedObjectList(null).stream()
-                    .filter(it -> isAxonPathClass(it) && it.isAnnotation())
-                    .filter(it -> {
-                        try {
-                            if (parentGeom.intersects(it.getROI().getGeometry())) return true;
-                            PathObject ancestor = it.getParent();
-                            while (ancestor != null && isAxonPathClass(ancestor)) {
-                                if (parentGeom.intersects(ancestor.getROI().getGeometry())) return true;
-                                ancestor = ancestor.getParent();
-                            }
-                            return false;
-                        } catch (Exception e) {
-                            return false;
+        // Collect all AxonPath annotations that either directly intersect the parent, or
+        // have a QuPath ancestor (fibre) that intersects the parent. The ancestor check handles
+        // annotations created from scratch where QuPath places the axon as a child of the fibre
+        // in the hierarchy, even when the axon lies outside the parent boundary.
+        //
+        // Restricted to the parent's own z/t plane: geometry intersection tests below are 2D
+        // (X,Y) only, so on a z-stack where fibres occupy similar XY footprints across slices,
+        // omitting this check pulls in every other slice's objects as candidates too. That
+        // blew up the cost of HierarchyTools.assignChildrenToParents()'s O(parents x children)
+        // matching below roughly with (z-slices)^2, which is what made recompute() effectively
+        // freeze on 3D data.
+        var parentGeom = parentROI.getGeometry();
+        var allAxonPath = hierarchy.getFlattenedObjectList(null).stream()
+                .filter(it -> isAxonPathClass(it) && it.isAnnotation())
+                .filter(it -> it.getROI().getImagePlane().getZ() == parentPlane.getZ()
+                        && it.getROI().getImagePlane().getT() == parentPlane.getT())
+                .filter(it -> {
+                    try {
+                        if (parentGeom.intersects(it.getROI().getGeometry())) return true;
+                        PathObject ancestor = it.getParent();
+                        while (ancestor != null && isAxonPathClass(ancestor)) {
+                            if (parentGeom.intersects(ancestor.getROI().getGeometry())) return true;
+                            ancestor = ancestor.getParent();
                         }
-                    })
-                    .toList();
+                        return false;
+                    } catch (Exception e) {
+                        return false;
+                    }
+                })
+                .toList();
 
-            if (allAxonPath.isEmpty()) {
-                logger.info("No AxonPath objects found within selected parent, skipping");
-                continue;
-            }
-
-            // Convert annotations to detections
-            var detections = allAxonPath.stream()
-                    .map(d -> PathObjects.createDetectionObject(d.getROI(), d.getPathClass()))
-                    .toList();
-            hierarchy.removeObjects(allAxonPath, false);
-
-            var fibres = detections.stream()
-                    .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
-                    .toList();
-            var axons = detections.stream()
-                    .filter(it -> it.getPathClass() == PathClass.getInstance("Axon"))
-                    .toList();
-            var innerCylinders = detections.stream()
-                    .filter(it -> it.getPathClass() == PathClass.getInstance("InnerCylinder"))
-                    .toList();
-
-            if (fibres.isEmpty()) {
-                logger.info("No Fibre objects found within selected parent, skipping");
-                continue;
-            }
-
-            HierarchyTools.updateHierarchy(hierarchy, parentObject, fibres, axons, innerCylinders);
-
-            var validFibres = parentObject.getChildObjects().stream()
-                    .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
-                    .toList();
-            QuantificationTools.computeFeatures(imageData, validFibres);
-            QuantificationTools.computeIntensityFeatures(imageData, validFibres);
+        if (allAxonPath.isEmpty()) {
+            logger.info("No AxonPath objects found within selected parent, skipping");
+            return;
         }
 
-        logger.info("Hierarchy and measurements recomputed");
-        refreshPostProcessingButtons();
+        // Convert annotations to detections
+        var detections = allAxonPath.stream()
+                .map(d -> PathObjects.createDetectionObject(d.getROI(), d.getPathClass()))
+                .toList();
+        hierarchy.removeObjects(allAxonPath, false);
+
+        var fibres = detections.stream()
+                .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
+                .toList();
+        var axons = detections.stream()
+                .filter(it -> it.getPathClass() == PathClass.getInstance("Axon"))
+                .toList();
+        var innerCylinders = detections.stream()
+                .filter(it -> it.getPathClass() == PathClass.getInstance("InnerCylinder"))
+                .toList();
+
+        if (fibres.isEmpty()) {
+            logger.info("No Fibre objects found within selected parent, skipping");
+            return;
+        }
+
+        HierarchyTools.updateHierarchy(hierarchy, parentObject, fibres, axons, innerCylinders);
+
+        var validFibres = parentObject.getChildObjects().stream()
+                .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
+                .toList();
+        QuantificationTools.computeFeatures(imageData, validFibres);
+        QuantificationTools.computeIntensityFeatures(imageData, validFibres);
     }
 
     @FXML

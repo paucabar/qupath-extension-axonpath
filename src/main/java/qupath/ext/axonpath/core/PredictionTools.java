@@ -5,6 +5,7 @@ import ij.ImagePlus;
 import ij.measure.Calibration;
 import ij.measure.Measurements;
 import ij.measure.ResultsTable;
+import ij.plugin.filter.GaussianBlur;
 import ij.plugin.filter.ParticleAnalyzer;
 import ij.plugin.frame.RoiManager;
 import ij.process.ImageProcessor;
@@ -90,12 +91,12 @@ public class PredictionTools {
         // with scale augmentation covering the same range.
         if (downsampleFactor >= 0.9 && downsampleFactor <= 1.1) {
             if (downsampleFactor != 1.0)
-                logger.debug("Pixel size difference within ±10% tolerance (factor = {}), skipping resampling.", downsampleFactor);
+                logger.debug("Pixel size difference within +/-10% tolerance (factor = {}), skipping resampling.", downsampleFactor);
             return 1.0;
         }
 
         if (downsampleFactor < 1) {
-            logger.warn("Target pixel size ({} µm) is smaller than image pixel size ({} µm). " +
+            logger.warn("Target pixel size ({} um) is smaller than image pixel size ({} um). " +
                     "Upsampling will be applied (factor = {}).",
                     targetPixelSizeMicrons, imagePixelSizeMicrons, downsampleFactor);
         }
@@ -230,15 +231,17 @@ public class PredictionTools {
     }
 
     /**
-     * Performs instance segmentation on a Signed Distance Transform (SDT) channel
+     * Performs instance segmentation on a Skeleton Distance Transform (SDT) channel
      * of the model prediction.
      * <p>
      * The pipeline is:
      * <ol>
-     *   <li>Threshold the SDT channel to get seed regions</li>
+     *   <li>Apply a Gaussian pre-smooth (σ=1.5 inference pixels) to suppress prediction
+     *       valleys that would otherwise split large objects into multiple seeds</li>
+     *   <li>Threshold the smoothed SDT channel to get seed regions</li>
      *   <li>Add seeds to the hierarchy and render them as a 16-bit label image
      *       via a {@link LabeledImageServer}</li>
-     *   <li>Apply a 2D watershed using the SDT channel as intensity guidance</li>
+     *   <li>Apply a 2D watershed using the <em>unsmoothed</em> SDT channel as intensity guidance</li>
      *   <li>Convert the resulting label image back to QuPath annotation objects</li>
      * </ol>
      * Seeds smaller than 30% of the expected minimum object diameter are filtered out.
@@ -253,12 +256,18 @@ public class PredictionTools {
                                              ImageData<BufferedImage> imageData,
                                              RegionRequest request,
                                              double translateX, double translateY) throws IOException {
-        // Threshold the SDT channel to obtain seed regions
         prediction.setC(channel);
         ImageProcessor sdtChannel = prediction.getProcessor().duplicate();
-        sdtChannel.setThreshold(minThreshold, maxThreshold, ImageProcessor.NO_LUT_UPDATE);
 
-        var thresholdedROI = SimpleThresholding.thresholdToROI(sdtChannel, request);
+        // Smooth a copy of the SDT for seed extraction only.
+        // A Gaussian pre-smooth suppresses prediction valleys that would otherwise split
+        // large objects into multiple seeds. σ=1.5 inference pixels matches the Python pipeline.
+        // The unsmoothed sdtChannel is kept for the watershed gradient.
+        ImageProcessor sdtSmoothed = sdtChannel.duplicate();
+        new GaussianBlur().blurGaussian(sdtSmoothed, 1.5);
+        sdtSmoothed.setThreshold(minThreshold, maxThreshold, ImageProcessor.NO_LUT_UPDATE);
+
+        var thresholdedROI = SimpleThresholding.thresholdToROI(sdtSmoothed, request);
         if (thresholdedROI == null) {
             logger.warn("processSDT ({}): no regions found above threshold", className);
             return java.util.Collections.emptySet();
@@ -308,7 +317,7 @@ public class PredictionTools {
         // ArrayIndexOutOfBoundsException inside Watershed. Resize sdtChannel to match if needed.
         if (sdtChannel.getWidth() != labelProcessor.getWidth() ||
                 sdtChannel.getHeight() != labelProcessor.getHeight()) {
-            logger.warn("processSDT ({}): SDT size {}×{} ≠ label size {}×{}, resizing SDT to match",
+            logger.warn("processSDT ({}): SDT size {}x{} != label size {}x{}, resizing SDT to match",
                     className, sdtChannel.getWidth(), sdtChannel.getHeight(),
                     labelProcessor.getWidth(), labelProcessor.getHeight());
             sdtChannel.setInterpolationMethod(ImageProcessor.BILINEAR);
@@ -327,7 +336,7 @@ public class PredictionTools {
         ImagePlane plane = request.getImagePlane();
         Calibration calibration = prediction.getCalibration();
 
-        logger.info("processSDT ({}): {} seeds → {} detected objects", className, seedObjects.size(), detectedROIs.size());
+        logger.info("processSDT ({}): {} seeds -> {} detected objects", className, seedObjects.size(), detectedROIs.size());
 
         return detectedROIs.stream()
                 .map(roiIJ -> {
@@ -421,7 +430,8 @@ public class PredictionTools {
      * @param minDiameter        minimum object diameter in pixels for seed filtering
      * @param predictInnerCylinder whether to predict inner cylinder structures
      * @param removeEdgeFibres     whether to remove fibres touching the parent boundary after hierarchy is built
-     * @return all objects created by the pipeline (fibres, axons, and optionally inner cylinders)
+     * @return the AxonPath objects left in the hierarchy under the parent after hierarchy building
+     *         and filtering: fibres plus their inner cylinder and axon descendants
      */
     public static Collection<PathObject> runAxonPath(Path modelPath,
                                                    ImageData<BufferedImage> imageData,
@@ -444,7 +454,7 @@ public class PredictionTools {
         double minDiameterPixels = minDiameter;
         boolean predictInnerCylinderFlag = predictInnerCylinder;
 
-        logger.info("Model parameters: pixel_size={} µm, min_diameter={} px, predict_inner_cylinder={}",
+        logger.info("Model parameters: pixel_size={} um, min_diameter={} px, predict_inner_cylinder={}",
                 targetPixelSizeMicrons, minDiameterPixels, predictInnerCylinderFlag);
 
         double downsample = calculateDownsampleFactor(imageData, targetPixelSizeMicrons);
@@ -465,7 +475,7 @@ public class PredictionTools {
         int[] inputShape = new int[]{1, 1, 512, 512};
         ImagePlus prediction = modelInference(
                 modelPath.resolve("weights.pt").toUri(),
-                "NCHW", 512, 512, Padding.symmetric(32), inputShape,
+                "NCHW", 512, 512, Padding.symmetric(64), inputShape,
                 imageData, server, request, channel, device);
 
         // Post-process prediction channels into QuPath objects
@@ -508,8 +518,10 @@ public class PredictionTools {
             parentObject.setLocked(true);
         }
 
-        return Stream.of(fibres.stream(), axons.stream(), innerCylinders.stream())
-                .flatMap(s -> s)
+        // Return what actually ended up in the hierarchy: updateHierarchy() replaces objects with
+        // clipped copies and drops incomplete fibres, so the raw fibres/axons lists are stale here
+        return validFibres.stream()
+                .flatMap(fibre -> Stream.concat(Stream.of(fibre), HierarchyTools.getAllDescendants(fibre).stream()))
                 .collect(Collectors.toSet());
     }
 }

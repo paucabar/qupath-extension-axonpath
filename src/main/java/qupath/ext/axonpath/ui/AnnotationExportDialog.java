@@ -55,6 +55,14 @@ public class AnnotationExportDialog {
         var rawBtn      = new ToggleButton("Raw (GeoJSON)");
         trainingBtn.setSelected(true);
         var modeSegmented = new SegmentedButton(trainingBtn, rawBtn);
+        // SegmentedButton wraps a plain ToggleGroup, which allows clicking the
+        // already-selected button to deselect it (ToggleButton.fire() just negates
+        // isSelected()), leaving the group with no selection while the mode panel
+        // stays visually unchanged. Re-select the previous toggle to prevent this.
+        var modeToggleGroup = modeSegmented.getToggleGroup();
+        modeToggleGroup.selectedToggleProperty().addListener((obs, oldToggle, newToggle) -> {
+            if (newToggle == null) modeToggleGroup.selectToggle(oldToggle);
+        });
 
         // ── Image list ───────────────────────────────────────────────────────
         var imageListView = new CheckListView<String>();

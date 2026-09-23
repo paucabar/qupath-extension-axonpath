@@ -89,7 +89,7 @@ public class TracingTools {
                 .filter(o -> o.isAnnotation())
                 .count();
         if (annotationCount > 0) {
-            logger.warn("traceAxons: {} Fibre annotation(s) found and will be ignored — only detections are traced",
+            logger.warn("traceAxons: {} Fibre annotation(s) found and will be ignored - only detections are traced",
                     annotationCount);
         }
 

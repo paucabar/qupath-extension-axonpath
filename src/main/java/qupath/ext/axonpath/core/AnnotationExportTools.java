@@ -46,7 +46,9 @@ public class AnnotationExportTools {
      *   outputDir/labels/  — fibre instance labels (unique integer per Fibre)
      * </pre>
      * ROI convention: unclassified annotation objects define export regions.
-     * If none are present the whole image is exported, one tile per z-slice/timepoint.
+     * If none are present, the whole image is exported — but only for the z-slices/timepoints
+     * that actually contain a classified (Fibre/InnerCylinder/Axon) annotation; planes with no
+     * classified annotations are skipped entirely.
      * The {@code _roi<n>} suffix is always written regardless of the number of ROIs.
      * <p>
      * Images with no classified annotations are still exported (masks and labels
@@ -97,7 +99,11 @@ public class AnnotationExportTools {
                 boolean multiZ = nZ > 1;
                 boolean multiT = nT > 1;
 
-                boolean hasClassified = hierarchy.getAnnotationObjects().stream()
+                // AxonPath objects may be annotations (mid manual-edit) or detections (the normal
+                // post-inference/post-recompute state) — classification is what matters here, not
+                // object type, so both are scanned.
+                boolean hasClassified = hierarchy.getFlattenedObjectList(null).stream()
+                        .filter(o -> o.isAnnotation() || o.isDetection())
                         .anyMatch(a -> a.getPathClass() == fibreClass
                                     || a.getPathClass() == innerCylinderClass
                                     || a.getPathClass() == axonClass);
@@ -110,7 +116,8 @@ public class AnnotationExportTools {
 
                 if (!rois.isEmpty()) {
                     // ROI-based: one tile per ROI; plane determined by the ROI's own image plane
-                    for (int j = 0; j < rois.size(); j++) {
+                    int numRois = rois.size();
+                    for (int j = 0; j < numRois; j++) {
                         var roi   = rois.get(j).getROI();
                         int z     = roi.getImagePlane().getZ();
                         int t     = roi.getImagePlane().getT();
@@ -119,21 +126,22 @@ public class AnnotationExportTools {
                         try (var semanticServer = new LabeledImageServer.Builder(imageData)
                                 .backgroundLabel(0, ColorTools.BLACK)
                                 .downsample(downsample)
+                                .useAnnotations()
+                                .useDetections()
                                 .addLabel("Fibre",         1)
                                 .addLabel("InnerCylinder", 2)
                                 .addLabel("Axon",          3)
                                 .multichannelOutput(false)
-                                .useFilter(p -> p.isAnnotation()
-                                        && p.getROI().getImagePlane().getZ() == z
+                                .useFilter(p -> p.getROI().getImagePlane().getZ() == z
                                         && p.getROI().getImagePlane().getT() == t)
                                 .build();
                              var instanceServer = new LabeledImageServer.Builder(imageData)
                                 .backgroundLabel(0, ColorTools.BLACK)
                                 .downsample(downsample)
                                 .useAnnotations()
+                                .useDetections()
                                 .useInstanceLabels()
-                                .useFilter(p -> p.isAnnotation()
-                                        && p.getPathClass() == fibreClass
+                                .useFilter(p -> p.getPathClass() == fibreClass
                                         && p.getROI().getImagePlane().getZ() == z
                                         && p.getROI().getImagePlane().getT() == t)
                                 .multichannelOutput(false)
@@ -149,10 +157,14 @@ public class AnnotationExportTools {
                                     RegionRequest.createInstance(instanceServer.getPath(), downsample, roi),
                                     new File(labelsDir, suf).getAbsolutePath());
                         }
+                        if (onProgress != null)
+                            onProgress.accept(name, (i + (j + 1.0) / numRois) / n);
                     }
                 } else {
-                    // Whole-image fallback: export only planes that have classified annotations
-                    var classifiedPlanes = hierarchy.getAnnotationObjects().stream()
+                    // Whole-image fallback: export only planes that have classified AxonPath
+                    // objects — annotation or detection, classification is what matters here.
+                    var classifiedPlanes = hierarchy.getFlattenedObjectList(null).stream()
+                            .filter(o -> o.isAnnotation() || o.isDetection())
                             .filter(a -> a.getPathClass() == fibreClass
                                       || a.getPathClass() == innerCylinderClass
                                       || a.getPathClass() == axonClass)
@@ -160,7 +172,9 @@ public class AnnotationExportTools {
                             .distinct()
                             .toList();
 
-                    for (var plane : classifiedPlanes) {
+                    int numPlanes = classifiedPlanes.size();
+                    for (int j = 0; j < numPlanes; j++) {
+                        var plane = classifiedPlanes.get(j);
                         int z = plane.getZ();
                         int t = plane.getT();
                         String suf = base + "_roi0" + planeSuffix(z, t, multiZ, multiT) + ".tif";
@@ -168,21 +182,22 @@ public class AnnotationExportTools {
                         try (var semanticServer = new LabeledImageServer.Builder(imageData)
                                 .backgroundLabel(0, ColorTools.BLACK)
                                 .downsample(downsample)
+                                .useAnnotations()
+                                .useDetections()
                                 .addLabel("Fibre",         1)
                                 .addLabel("InnerCylinder", 2)
                                 .addLabel("Axon",          3)
                                 .multichannelOutput(false)
-                                .useFilter(p -> p.isAnnotation()
-                                        && p.getROI().getImagePlane().getZ() == z
+                                .useFilter(p -> p.getROI().getImagePlane().getZ() == z
                                         && p.getROI().getImagePlane().getT() == t)
                                 .build();
                              var instanceServer = new LabeledImageServer.Builder(imageData)
                                 .backgroundLabel(0, ColorTools.BLACK)
                                 .downsample(downsample)
                                 .useAnnotations()
+                                .useDetections()
                                 .useInstanceLabels()
-                                .useFilter(p -> p.isAnnotation()
-                                        && p.getPathClass() == fibreClass
+                                .useFilter(p -> p.getPathClass() == fibreClass
                                         && p.getROI().getImagePlane().getZ() == z
                                         && p.getROI().getImagePlane().getT() == t)
                                 .multichannelOutput(false)
@@ -201,6 +216,8 @@ public class AnnotationExportTools {
                                             0, 0, server.getWidth(), server.getHeight(), z, t),
                                     new File(labelsDir, suf).getAbsolutePath());
                         }
+                        if (onProgress != null)
+                            onProgress.accept(name, (i + (j + 1.0) / numPlanes) / n);
                     }
                 }
 
@@ -262,7 +279,9 @@ public class AnnotationExportTools {
                         .distinct()
                         .toList();
 
-                for (var plane : annotatedPlanes) {
+                int numPlanes = annotatedPlanes.size();
+                for (int j = 0; j < numPlanes; j++) {
+                    var plane = annotatedPlanes.get(j);
                     int z = plane.getZ();
                     int t = plane.getT();
                     String suf = base + planeSuffix(z, t, multiZ, multiT);
@@ -285,6 +304,9 @@ public class AnnotationExportTools {
                             new File(annotationsDir, suf + ".geojson"),
                             planeAnnotations,
                             PathIO.GeoJsonExportOptions.FEATURE_COLLECTION);
+
+                    if (onProgress != null)
+                        onProgress.accept(name, (i + (j + 1.0) / numPlanes) / n);
                 }
 
             } catch (Exception e) {
