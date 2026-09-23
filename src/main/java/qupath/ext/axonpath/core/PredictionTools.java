@@ -367,16 +367,21 @@ public class PredictionTools {
         double minSize = Math.PI * Math.pow(minDiameterPixels / 2.0, 2);
         ImagePlus binaryMask = new ImagePlus("Binary Mask", ip.createMask());
         int options = ParticleAnalyzer.SHOW_MASKS + ParticleAnalyzer.ADD_TO_MANAGER + ParticleAnalyzer.COMPOSITE_ROIS;
+
+        // Use a private, hidden RoiManager. The global instance would briefly flash an ImageJ
+        // window, and would absorb (then lose) any ROI Manager the user already has open.
+        // setRoiManager() applies to the next analyze() call only.
+        // Do not call rm.close(): it resets ImageJ's global ROI Manager reference as well.
+        RoiManager rm = new RoiManager(true);
+        ParticleAnalyzer.setRoiManager(rm);
         analyzeParticles(binaryMask, options, Measurements.AREA, minSize, Double.POSITIVE_INFINITY, 0, 1);
 
-        RoiManager rm = RoiManager.getInstance();
-        if (rm == null || rm.getCount() == 0) {
+        if (rm.getCount() == 0) {
             logger.info("processSemantic ({}): 0 detected objects", className);
             return java.util.Collections.emptySet();
         }
-        rm.setVisible(false);
         var roiList = rm.getRoisAsArray();
-        rm.close();
+        rm.reset();
 
         Calibration calibration = prediction.getCalibration();
 
