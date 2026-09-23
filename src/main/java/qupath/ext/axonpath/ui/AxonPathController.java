@@ -23,6 +23,7 @@ import org.controlsfx.control.SearchableComboBox;
 import org.controlsfx.dialog.ProgressDialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import qupath.ext.axonpath.core.AxonPathClasses;
 import qupath.ext.axonpath.core.HierarchyTools;
 import qupath.ext.axonpath.core.PredictionTools;
 import qupath.ext.axonpath.core.PytorchManager;
@@ -205,6 +206,7 @@ public class AxonPathController extends BorderPane {
         final double finalPixelSize = pixelSize;
         final double finalMinDiameter = minDiameter;
 
+        ensureAxonPathClasses();
         isRunning = true;
         setStatusLabel(MessageFormat.format(
                 resources.getString("ui.run.progress"), 1, selectedObjects.size()));
@@ -270,6 +272,7 @@ public class AxonPathController extends BorderPane {
 
         if (detections.isEmpty()) return;
 
+        ensureAxonPathClasses();
         var annotations = detections.stream()
                 .map(d -> {
                     var ann = PathObjects.createAnnotationObject(d.getROI(), d.getPathClass());
@@ -283,6 +286,14 @@ public class AxonPathController extends BorderPane {
         hierarchy.fireHierarchyChangedEvent(this);
 
         refreshPostProcessingButtons();
+    }
+
+    /**
+     * Adds any missing AxonPath classes to QuPath's class list. Called before each action
+     * because opening a project (possibly while this window is open) replaces that list.
+     */
+    private void ensureAxonPathClasses() {
+        AxonPathClasses.ensureClassesAvailable(QuPathGUI.getInstance().getAvailablePathClasses());
     }
 
     @FXML
@@ -353,6 +364,7 @@ public class AxonPathController extends BorderPane {
                 .toList();
         if (parents.isEmpty()) return;
 
+        ensureAxonPathClasses();
         isRunning = true;
         setStatusLabel(MessageFormat.format(
                 resources.getString("ui.run.progress"), 1, parents.size()));
