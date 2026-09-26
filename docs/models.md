@@ -1,6 +1,6 @@
 # Models
 
-AxonPath runs deep learning models trained with [aimseg-dl](https://github.com/paucabar/aimseg-dl).
+AxonPath runs deep learning models trained with [axonpath](https://github.com/paucabar/axonpath).
 Each model is trained for one type of image at a fixed resolution.
 
 ## Available models
@@ -17,10 +17,13 @@ model's. See [Segmentation](segmentation.md#pixel-size-µm).
 
 ## Download
 
-<!-- TODO: Zenodo DOI link -->
+The models are available on Zenodo:
+**[doi.org/10.5281/zenodo.22982902](https://doi.org/10.5281/zenodo.22982902)**
 
-Models are distributed as `.zip` files. Download the ones you need and unzip each into its own
-folder.
+They are distributed as `.zip` files. Download the ones you need and unzip each into its own folder.
+
+When citing the models, use the DOI above. Each model folder also contains a `README.md` with its
+details and citation.
 
 ## Setting up the model directory
 
@@ -64,5 +67,5 @@ A model without these keys cannot be used, and selecting it logs an error.
 ## Training your own model
 
 Models can be trained or fine-tuned on your own data with
-[aimseg-dl](https://github.com/paucabar/aimseg-dl). Training data can be exported from QuPath with
+[axonpath](https://github.com/paucabar/axonpath). Training data can be exported from QuPath with
 [Export annotations → Training](export.md#training-mode).
