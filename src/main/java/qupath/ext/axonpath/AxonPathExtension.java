@@ -1,8 +1,10 @@
 package qupath.ext.axonpath;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ResourceBundle;
 import javafx.beans.property.BooleanProperty;
 import javafx.scene.Scene;
+import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
 import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
@@ -31,6 +33,9 @@ public class AxonPathExtension implements QuPathExtension, GitHubProject {
 	private static final GitHubRepo EXTENSION_REPOSITORY = GitHubRepo.create(
 			EXTENSION_NAME, "paucabar", "qupath-extension-axonpath");
 
+	private static final String SCRIPTS_PATH = "/qupath/ext/axonpath/scripts/";
+	private static final String SEGMENTATION_SCRIPT = "AxonPath_segmentation.groovy";
+
 	private boolean isInstalled = false;
 
 	private static final BooleanProperty enableExtensionProperty = PathPrefs.createPersistentPreference(
@@ -57,11 +62,33 @@ public class AxonPathExtension implements QuPathExtension, GitHubProject {
 	}
 
 	private void addMenuItem(QuPathGUI qupath) {
-		var menu = qupath.getMenu("Extensions", false);
-		MenuItem menuItem = new MenuItem(EXTENSION_NAME);
-		menuItem.setOnAction(e -> createStage());
-		menuItem.disableProperty().bind(enableExtensionProperty.not());
-		menu.getItems().add(menuItem);
+		var extensionsMenu = qupath.getMenu("Extensions", false);
+		Menu menu = new Menu(EXTENSION_NAME);
+		menu.disableProperty().bind(enableExtensionProperty.not());
+
+		MenuItem openItem = new MenuItem(resources.getString("menu.open"));
+		openItem.setOnAction(e -> createStage());
+
+		MenuItem scriptItem = new MenuItem(resources.getString("menu.script.segmentation"));
+		scriptItem.setOnAction(e -> openScriptTemplate(qupath, SEGMENTATION_SCRIPT));
+
+		menu.getItems().addAll(openItem, scriptItem);
+		extensionsMenu.getItems().add(menu);
+	}
+
+	/**
+	 * Opens a script bundled in the extension JAR as a new, unsaved script in the script editor.
+	 */
+	private void openScriptTemplate(QuPathGUI qupath, String scriptName) {
+		try (var stream = AxonPathExtension.class.getResourceAsStream(SCRIPTS_PATH + scriptName)) {
+			if (stream == null)
+				throw new IOException("Script not found in extension: " + scriptName);
+			var script = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+			qupath.getScriptEditor().showScript(scriptName, script);
+		} catch (IOException e) {
+			Dialogs.showErrorMessage(EXTENSION_NAME, "Unable to open script template: " + e.getMessage());
+			logger.error("Unable to open script template {}", scriptName, e);
+		}
 	}
 
 	private void createStage() {
