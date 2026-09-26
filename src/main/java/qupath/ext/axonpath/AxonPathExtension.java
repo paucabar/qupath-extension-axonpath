@@ -2,7 +2,6 @@ package qupath.ext.axonpath;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ResourceBundle;
-import javafx.beans.property.BooleanProperty;
 import javafx.scene.Scene;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
@@ -18,7 +17,6 @@ import qupath.lib.common.Version;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.extensions.GitHubProject;
 import qupath.lib.gui.extensions.QuPathExtension;
-import qupath.lib.gui.prefs.PathPrefs;
 
 import java.io.IOException;
 
@@ -37,9 +35,6 @@ public class AxonPathExtension implements QuPathExtension, GitHubProject {
 	private static final String SEGMENTATION_SCRIPT = "AxonPath_segmentation.groovy";
 
 	private boolean isInstalled = false;
-
-	private static final BooleanProperty enableExtensionProperty = PathPrefs.createPersistentPreference(
-			"enableExtension", true);
 
 	private Stage stage;
 
@@ -64,7 +59,6 @@ public class AxonPathExtension implements QuPathExtension, GitHubProject {
 	private void addMenuItem(QuPathGUI qupath) {
 		var extensionsMenu = qupath.getMenu("Extensions", false);
 		Menu menu = new Menu(EXTENSION_NAME);
-		menu.disableProperty().bind(enableExtensionProperty.not());
 
 		MenuItem openItem = new MenuItem(resources.getString("menu.open"));
 		openItem.setOnAction(e -> createStage());
