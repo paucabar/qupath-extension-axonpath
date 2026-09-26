@@ -12,7 +12,7 @@ import qupath.lib.objects.classes.PathClass;
  * results manually).
  * <p>
  * Default colours are the fixed viridis stops used in the AxonPath benchmark overlay figures
- * (aimseg-dl {@code plot_prediction_overlays.py}), so objects look the same in QuPath as in the
+ * (axonpath training repo, {@code plot_prediction_overlays.py}), so objects look the same in QuPath as in the
  * published figures.
  */
 public class AxonPathClasses {

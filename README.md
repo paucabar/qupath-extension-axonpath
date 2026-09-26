@@ -3,7 +3,7 @@
 A [QuPath](https://qupath.github.io) extension for deep learning segmentation of myelinated nerve
 fibres in **electron microscopy** and **brightfield** images.
 
-AxonPath runs trained [AxonPath](https://github.com/paucabar/aimseg-dl) models on regions you
+AxonPath runs trained [AxonPath](https://github.com/paucabar/axonpath) models on regions you
 select and turns the predictions into a QuPath object hierarchy:
 
 - **Electron microscopy:** Fibre → InnerCylinder → Axon
@@ -60,6 +60,9 @@ for PyTorch and GPU setup.
 ## Citation
 
 A preprint describing AxonPath is in preparation. Citation details will be added here.
+
+To cite the models, use their Zenodo record:
+[doi.org/10.5281/zenodo.22982902](https://doi.org/10.5281/zenodo.22982902).
 
 ## License
 
