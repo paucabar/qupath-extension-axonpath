@@ -7,7 +7,7 @@ qupathExtension {
     name = "qupath-extension-axonpath"
     version = "0.1.0-SNAPSHOT"
     group = "io.github.paucabar"
-    description = "A QuPath extension for running inference with the AxonPath deep learning model"
+    description = "Run AxonPath deep learning models to segment fibres, inner cylinders and axons in EM and brightfield images, with morphometric measurements and tools for manual correction"
     automaticModule = "qupath.extension.axonpath"
 }
 
@@ -16,9 +16,7 @@ dependencies {
     implementation(libs.bundles.qupath)
     implementation(libs.bundles.logging)
     implementation(libs.qupath.fxtras)
-    implementation(libs.bundles.markdown)
 
-    implementation(libs.bioimageio.spec)
     implementation(libs.snakeyaml)
     implementation(libs.deepJavaLibrary)
     implementation(libs.qupath.djl)
