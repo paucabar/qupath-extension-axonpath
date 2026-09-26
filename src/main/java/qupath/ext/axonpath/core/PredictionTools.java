@@ -110,8 +110,10 @@ public class PredictionTools {
     /**
      * Extracts AxonPath-specific parameters from the model's rdf.yaml config block.
      * Expected keys: {@code pixel_size}, {@code min_diameter}, {@code predict_inner_cylinder}.
+     * Numeric values are returned as {@code Double} (even if written as whole numbers) and the
+     * flag as {@code Boolean}.
      *
-     * @throws IOException if the file cannot be read or a required config key is missing
+     * @throws IOException if the file cannot be read, or a required config key is missing or has the wrong type
      */
     public static Map<String, Object> extractParametersFromYaml(Path yamlPath) throws IOException {
         Yaml yaml = new Yaml();
@@ -127,11 +129,26 @@ public class PredictionTools {
                             "rdf.yaml config block is missing required key '" + key + "': " + yamlPath);
             }
             return Map.of(
-                    "pixel_size", config.get("pixel_size"),
-                    "min_diameter", config.get("min_diameter"),
-                    "predict_inner_cylinder", config.get("predict_inner_cylinder")
+                    "pixel_size", readDouble(config, "pixel_size", yamlPath),
+                    "min_diameter", readDouble(config, "min_diameter", yamlPath),
+                    "predict_inner_cylinder", readBoolean(config, "predict_inner_cylinder", yamlPath)
             );
         }
+    }
+
+    // YAML parses whole numbers (e.g. "pixel_size: 1") as Integer, so numbers are normalised to Double
+    private static double readDouble(Map<String, Object> config, String key, Path yamlPath) throws IOException {
+        if (config.get(key) instanceof Number number)
+            return number.doubleValue();
+        throw new IOException("rdf.yaml config key '" + key + "' must be a number, but is '"
+                + config.get(key) + "': " + yamlPath);
+    }
+
+    private static boolean readBoolean(Map<String, Object> config, String key, Path yamlPath) throws IOException {
+        if (config.get(key) instanceof Boolean bool)
+            return bool;
+        throw new IOException("rdf.yaml config key '" + key + "' must be true or false, but is '"
+                + config.get(key) + "': " + yamlPath);
     }
 
     /**
