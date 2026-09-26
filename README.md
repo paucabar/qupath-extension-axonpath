@@ -11,16 +11,15 @@ select and turns the predictions into a QuPath object hierarchy:
 
 Every fibre gets morphometric measurements (areas, g-ratios, circularity, solidity, axon count)
 and per-compartment intensity statistics. The results can be corrected by hand and re-measured
-without re-running the model.
+without re-running the model, traced across z-slices, and exported for analysis or model training.
 
-> **Status:** first release in preparation. Full documentation is coming; this page covers the
-> essentials.
+<!-- screenshot: segmented EM image -->
 
 ## Requirements
 
 - QuPath **0.7.0** or later
-- An internet connection the first time a model runs: QuPath's Deep Java Library extension
-  downloads the PyTorch engine on first use
+- The PyTorch engine, downloaded once with **Extensions → Deep Java Library → Manage DJL engines**
+  before the first run (see [Installation](docs/installation.md))
 - A GPU is optional; models run on CPU too
 
 ## Installation
@@ -32,32 +31,31 @@ AxonPath is installed from its extension catalog, through QuPath's Extension Man
    `https://github.com/paucabar/qupath-catalog-axonpath` and click **Add**.
 3. Install **AxonPath** from the extension list and restart QuPath if prompted.
 
-The extension then appears under **Extensions → AxonPath**.
+The extension then appears under **Extensions → AxonPath**. See [Installation](docs/installation.md)
+for PyTorch and GPU setup.
 
-## Models
+## Quick start
 
-AxonPath models are distributed in [BioImage.IO](https://bioimage.io) format: one folder per
-model, containing `weights.pt` and `rdf.yaml`. The `rdf.yaml` sets the model's defaults (target
-pixel size, minimum object diameter, whether inner cylinders are predicted).
+1. [Download the models](docs/models.md) and select their directory in the AxonPath panel.
+2. Open an image with its pixel size set.
+3. Select the annotations to process, or click **Annotate whole image**.
+4. Choose a model and input channel, and click **Run**.
+5. Check the results and [measurements](docs/measurements.md); correct errors with
+   [Review & Edit](docs/review-and-edit.md).
 
-Models for EM (central and peripheral nervous system) and brightfield images will be published
-alongside the first release. Put the model folders inside one directory and select that
-directory in the AxonPath panel.
+## Documentation
 
-## Basic workflow
-
-1. Open an image with pixel size calibration set.
-2. Select the annotations to process, or click **Annotate whole image** (one annotation per
-   z-slice for z-stacks).
-3. Choose a model, input channel and preferred device, check the model parameters, and click
-   **Run**.
-4. To correct results by hand (**Review & Edit**): **Convert detections to annotations**, edit
-   the objects with QuPath's tools, then **Recompute hierarchy & measurements**.
-5. **Data Export:** export measurements as TSV, or export annotations as training tiles or
-   full-resolution images with GeoJSON.
-
-For z-stacks, **3D Tracing → Trace Axons** links fibres across consecutive slices by shape
-overlap.
+| Page | Content |
+|---|---|
+| [Installation](docs/installation.md) | Installing AxonPath and PyTorch, GPU support |
+| [Models](docs/models.md) | Available models, download, model directory, model format |
+| [Segmentation](docs/segmentation.md) | Running models from the AxonPath panel, parameters |
+| [Review & Edit](docs/review-and-edit.md) | Correcting results by hand and recomputing |
+| [Measurements](docs/measurements.md) | Every measurement and how it is computed |
+| [3D tracing](docs/tracing.md) | Linking fibres across z-slices |
+| [Export](docs/export.md) | Exporting measurements and annotations |
+| [Scripting and batch processing](docs/scripting.md) | Script template and `AxonPathSegmenter` API |
+| [Troubleshooting](docs/troubleshooting.md) | Common problems and errors |
 
 ## Citation
 
