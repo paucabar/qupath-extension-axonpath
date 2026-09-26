@@ -1,5 +1,6 @@
 package qupath.ext.axonpath.ui;
 
+import java.beans.PropertyChangeListener;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -97,6 +98,17 @@ public class AxonPathController extends BorderPane {
     private double defaultMinDiameter;
     private boolean defaultPredictInnerCylinder;
 
+    // Pixel size and channel name edits (Image tab or scripts) keep the same ImageData and only
+    // fire a "serverMetadata" property change, so the channel list and downsample label must
+    // listen for it. Also fires on channel colour changes. May fire off the FX thread.
+    private final PropertyChangeListener serverMetadataListener = evt -> {
+        if ("serverMetadata".equals(evt.getPropertyName()))
+            Platform.runLater(() -> {
+                refreshChannels(true);
+                updateDownsampleDisplay();
+            });
+    };
+
     private final StringProperty modelDir = PathPrefs.createPersistentPreference("axonpath.model.dir", null);
     private final StringProperty preferredDevice = PathPrefs.createPersistentPreference("axonpath.inference.device", null);
     private final StringProperty minOverlapPref = PathPrefs.createPersistentPreference("axonpath.tracing.min.overlap", "0.5");
@@ -144,11 +156,16 @@ public class AxonPathController extends BorderPane {
         // Refresh channels and post-processing buttons whenever the image changes
         QuPathGUI.getInstance().imageDataProperty().addListener(
                 (obs, oldImage, newImage) -> {
-                    refreshChannels();
+                    if (oldImage != null) oldImage.removePropertyChangeListener(serverMetadataListener);
+                    if (newImage != null) newImage.addPropertyChangeListener(serverMetadataListener);
+                    refreshChannels(false);
                     refreshPostProcessingButtons();
                     updateDownsampleDisplay();
                 });
-        refreshChannels();
+        var currentImage = QuPathGUI.getInstance().getImageData();
+        if (currentImage != null) currentImage.addPropertyChangeListener(serverMetadataListener);
+        refreshChannels(false);
+        updateDownsampleDisplay();
 
         // Enable/disable post-processing buttons based on selection
         QuPathGUI.getInstance().getViewer().addViewerListener(new qupath.lib.gui.viewer.QuPathViewerListener() {
@@ -697,7 +714,15 @@ public class AxonPathController extends BorderPane {
         predictInnerCylinderCheckBox.setSelected(defaultPredictInnerCylinder);
     }
 
-    private void refreshChannels() {
+    /**
+     * Rebuild the channel list from the current image's metadata.
+     *
+     * @param keepSelection if true, reselect the previously selected channel index (when still valid)
+     *                      instead of resetting to C1. Use only for metadata updates on the same image
+     *                      (e.g. channel renames), not when switching images.
+     */
+    private void refreshChannels(boolean keepSelection) {
+        int previousIndex = channelChoiceBox.getSelectionModel().getSelectedIndex();
         channelChoiceBox.getItems().clear();
         var imageData = QP.getCurrentImageData();
         if (imageData == null) return;
@@ -708,7 +733,9 @@ public class AxonPathController extends BorderPane {
             String name = "C" + (i + 1) + " - " + channels.get(i).getName();
             channelChoiceBox.getItems().add(name);
         }
-        if (!channelChoiceBox.getItems().isEmpty()) {
+        if (keepSelection && previousIndex >= 0 && previousIndex < channelChoiceBox.getItems().size()) {
+            channelChoiceBox.getSelectionModel().select(previousIndex);
+        } else if (!channelChoiceBox.getItems().isEmpty()) {
             channelChoiceBox.getSelectionModel().selectFirst();
         }
     }
