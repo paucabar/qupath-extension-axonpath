@@ -31,6 +31,18 @@ public class AxonPathClasses {
     }
 
     /**
+     * Returns whether a class is one of the AxonPath output classes (Fibre, InnerCylinder, Axon).
+     *
+     * @param pathClass the class to check; {@code null} (unclassified) returns false
+     * @return true for an AxonPath class
+     */
+    public static boolean isAxonPathClass(PathClass pathClass) {
+        return pathClass != null && (pathClass == PathClass.getInstance(FIBRE)
+                || pathClass == PathClass.getInstance(INNER_CYLINDER)
+                || pathClass == PathClass.getInstance(AXON));
+    }
+
+    /**
      * Appends any missing AxonPath classes (Fibre, InnerCylinder, Axon) to the given class list.
      * Existing entries are never removed, reordered or recoloured; a default colour is applied
      * only to a class that is being added.
