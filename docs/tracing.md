@@ -3,7 +3,7 @@
 For z-stacks (e.g. serial-section or FIB-SEM data), **3D Tracing** links fibres across consecutive
 z-slices, so the same axon can be followed through the volume.
 
-<!-- screenshot: 3D Tracing section and traced fibres coloured by Axon ID -->
+![The 3D Tracing section and a FIB-SEM slice with traced fibres coloured by Axon ID](images/axon-tracing.png)
 
 ## Before tracing
 

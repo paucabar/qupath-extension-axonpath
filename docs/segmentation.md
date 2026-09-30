@@ -5,7 +5,7 @@ at once, see [Scripting and batch processing](scripting.md).
 
 Open the panel from **Extensions → AxonPath → AxonPath**.
 
-<!-- screenshot: AxonPath panel, main section -->
+![The AxonPath panel with a model selected, its parameters and the Run button](images/axonpath-panel.png)
 
 ## 1. Prepare the image
 
@@ -136,7 +136,7 @@ The results are detection objects, organised under each parent:
 View them in the Hierarchy tab, and their measurements with **Measure → Show detection
 measurements**. See [Measurements](measurements.md) for what each measurement means.
 
-<!-- screenshot: segmented EM image with the hierarchy -->
+![Segmented electron microscopy image, with the Fibre > InnerCylinder > Axon hierarchy and fibre measurements](images/segmentation-hierarchy.png)
 
 ## Next steps
 

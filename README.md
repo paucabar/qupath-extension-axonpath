@@ -13,7 +13,7 @@ Every fibre gets morphometric measurements (areas, g-ratios, circularity, solidi
 and per-compartment intensity statistics. The results can be corrected by hand and re-measured
 without re-running the model, traced across z-slices, and exported for analysis or model training.
 
-<!-- screenshot: segmented EM image -->
+![AxonPath segmentation of an electron microscopy image: fibres, inner cylinders and axons, with the object hierarchy](docs/images/segmentation-hierarchy.png)
 
 ## Requirements
 
