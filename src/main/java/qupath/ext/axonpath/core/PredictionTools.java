@@ -466,6 +466,9 @@ public class PredictionTools {
                                                    boolean predictInnerCylinder,
                                                    boolean removeEdgeFibres,
                                                    String device) throws IOException {
+        // Fail before inference (and before clearing previous results) rather than at quantification
+        QuantificationTools.requireIsotropicPixels(imageData.getServer().getPixelCalibration());
+
         var hierarchy = imageData.getHierarchy();
         if (!parentObject.getChildObjects().isEmpty()) {
             var allDescendants = HierarchyTools.getAllDescendants(parentObject);

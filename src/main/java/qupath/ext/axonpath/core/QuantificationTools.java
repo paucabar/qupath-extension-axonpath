@@ -14,6 +14,7 @@ import qupath.lib.analysis.features.ObjectMeasurements;
 import qupath.lib.analysis.features.ObjectMeasurements.Compartments;
 import qupath.lib.analysis.features.ObjectMeasurements.Measurements;
 import qupath.lib.images.ImageData;
+import qupath.lib.images.servers.PixelCalibration;
 import qupath.lib.images.servers.ImageServer;
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.PathObjects;
@@ -36,20 +37,43 @@ public class QuantificationTools {
     private static final Logger logger = LoggerFactory.getLogger(QuantificationTools.class);
 
     private static final Collection<Measurements> ALL_INTENSITY_MEASUREMENTS = EnumSet.allOf(Measurements.class);
+
+    /** Maximum relative difference between pixel width and height accepted as isotropic. */
+    public static final double ISOTROPY_TOLERANCE = 0.01;
     private static final double INTENSITY_DOWNSAMPLE = 1.0;
 
     private QuantificationTools() {
         throw new UnsupportedOperationException("Do not instantiate this class");
     }
 
-    public static void computeFeatures(ImageData<BufferedImage> imageData, Collection<PathObject> fibres) {
-        double pixelHeight = imageData.getServer().getPixelCalibration().getPixelHeightMicrons();
-        double pixelWidth = imageData.getServer().getPixelCalibration().getPixelWidthMicrons();
+    /**
+     * Checks that the image has a calibrated, isotropic XY pixel size in µm.
+     * <p>
+     * Pixel width and height may differ by up to {@link #ISOTROPY_TOLERANCE} (relative), because
+     * stored calibrations often differ slightly through rounding (e.g. 0.0021076 vs 0.0021056 µm).
+     * Areas are scaled with both pixel dimensions, so such small differences do not bias them.
+     *
+     * @param calibration the image pixel calibration
+     * @throws IllegalArgumentException if the pixel size is missing or clearly anisotropic
+     */
+    public static void requireIsotropicPixels(PixelCalibration calibration) {
+        if (!calibration.hasPixelSizeMicrons())
+            throw new IllegalArgumentException("AxonPath requires a calibrated pixel size (µm), but the image has none");
+        double pixelWidth = calibration.getPixelWidthMicrons();
+        double pixelHeight = calibration.getPixelHeightMicrons();
+        double relativeDifference = Math.abs(pixelWidth - pixelHeight) / Math.max(pixelWidth, pixelHeight);
+        if (!(relativeDifference <= ISOTROPY_TOLERANCE))
+            throw new IllegalArgumentException(String.format(
+                    "Pixel calibration is not isotropic (width: %s µm, height: %s µm, %.2f%% difference). "
+                            + "Pixel width and height may differ by at most %.0f%%.",
+                    pixelWidth, pixelHeight, relativeDifference * 100, ISOTROPY_TOLERANCE * 100));
+    }
 
-        if (pixelHeight != pixelWidth) {
-            throw new IllegalArgumentException(
-                "Pixel calibration is not isotropic (height: " + pixelHeight + ", width: " + pixelWidth + "). Isotropic XY pixels are required.");
-        }
+    public static void computeFeatures(ImageData<BufferedImage> imageData, Collection<PathObject> fibres) {
+        var calibration = imageData.getServer().getPixelCalibration();
+        requireIsotropicPixels(calibration);
+        double pixelHeight = calibration.getPixelHeightMicrons();
+        double pixelWidth = calibration.getPixelWidthMicrons();
 
         for (var fibre : fibres) {
             boolean withInnerCylinders = fibre.getChildObjects().stream()
