@@ -11,9 +11,9 @@ import qupath.lib.objects.classes.PathClass;
  * to make sure they appear in QuPath's class list (so users can pick them when correcting
  * results manually).
  * <p>
- * Default colours are the fixed viridis stops used in the AxonPath benchmark overlay figures
- * (axonpath training repo, {@code plot_prediction_overlays.py}), so objects look the same in QuPath as in the
- * published figures.
+ * Default colours: a light blue for fibres, chosen to stay visible on both dark myelin and grey
+ * background, and the viridis stops of the AxonPath benchmark overlay figures (axonpath training
+ * repo, {@code plot_prediction_overlays.py}) for inner cylinders and axons.
  */
 public class AxonPathClasses {
     private static final Logger logger = LoggerFactory.getLogger(AxonPathClasses.class);
@@ -22,7 +22,7 @@ public class AxonPathClasses {
     public static final String INNER_CYLINDER = "InnerCylinder";
     public static final String AXON = "Axon";
 
-    private static final int FIBRE_COLOR = ColorTools.packRGB(48, 103, 141);          // viridis(1/3)
+    private static final int FIBRE_COLOR = ColorTools.packRGB(30, 144, 255);          // light blue
     private static final int INNER_CYLINDER_COLOR = ColorTools.packRGB(53, 183, 120); // viridis(2/3)
     private static final int AXON_COLOR = ColorTools.packRGB(253, 231, 36);           // viridis(1.0)
 
