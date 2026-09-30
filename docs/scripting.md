@@ -18,6 +18,9 @@ def modelPath = "YOUR_MODEL_PATH"
 
 // Parent annotations to segment inside: class name, null (all), or "" (unclassified)
 def targetClassName = "YOUR_CLASS_NAME"
+
+// Segment whole images instead; targetClassName is then ignored
+def segmentFullImage = false
 ```
 
 - **`modelPath`** is the folder of one model, e.g. `"D:/models/em_cns-0.1.0"`. Forward slashes
@@ -40,10 +43,20 @@ Then adjust the segmentation options in the builder (see [Options](#options)) an
 1. Save the script.
 2. In the script editor, choose **Run → Run for project** and select the images to process.
 
-Images without annotations of the chosen class are skipped, with a message in the log. To segment
-whole images, create full-image annotations first, e.g. with **Objects → Annotations → Create full
-image annotation**, or add `createFullImageAnnotation(true)` before the parent selection in the
-script.
+Images without annotations of the chosen class are skipped, with a message in the log.
+
+### Segmenting whole images
+
+To segment whole images without drawing annotations, e.g. EM images with no background, set
+`segmentFullImage = true`. For each z-slice and timepoint, the script then:
+
+- reuses an existing full-image annotation, whatever its class, or creates an unclassified one;
+- uses only the first if there are several, with a warning in the log (delete the others);
+- skips the plane, with a message in the log, if it has any other annotation. A full-image
+  annotation would contain it, and the results of both would overlap.
+
+Re-running reuses the same annotations, so results are replaced rather than duplicated. For images
+with a lot of background, such as brightfield whole slides, annotate the tissue instead.
 
 ### Before running
 
