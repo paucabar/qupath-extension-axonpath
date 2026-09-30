@@ -466,11 +466,17 @@ public class PredictionTools {
                                                    boolean predictInnerCylinder,
                                                    boolean removeEdgeFibres,
                                                    String device) throws IOException {
+        // Fail before inference (and before clearing previous results) rather than at quantification
+        QuantificationTools.requireIsotropicPixels(imageData.getServer().getPixelCalibration());
+
+        // Remove previous results only: AxonPath objects directly under the parent, with their
+        // subtrees. Other objects inside the parent (e.g. nested user annotations) are kept.
         var hierarchy = imageData.getHierarchy();
-        if (!parentObject.getChildObjects().isEmpty()) {
-            var allDescendants = HierarchyTools.getAllDescendants(parentObject);
-            hierarchy.removeObjects(allDescendants, false);
-        }
+        var previousResults = parentObject.getChildObjects().stream()
+                .filter(it -> AxonPathClasses.isAxonPathClass(it.getPathClass()))
+                .toList();
+        if (!previousResults.isEmpty())
+            hierarchy.removeObjects(previousResults, false);
 
         double targetPixelSizeMicrons = pixelSize;
         double minDiameterPixels = minDiameter;

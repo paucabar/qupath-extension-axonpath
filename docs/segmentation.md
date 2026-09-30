@@ -118,6 +118,8 @@ For each parent, AxonPath:
 7. Locks the parent, so it is not moved or edited by accident.
 
 **Running again on the same parent replaces its previous results**, including manual corrections.
+Other annotations inside the parent are kept. Avoid running both a parent and an annotation nested
+inside it: their results overlap in the nested region.
 
 If no complete fibres are found, a notification says so. Check the pixel size, the channel and the
 model.

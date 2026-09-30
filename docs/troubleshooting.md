@@ -40,8 +40,9 @@ The model ran, but no complete fibre was found. Check that:
 
 ## "Pixel calibration is not isotropic"
 
-Pixel width and height differ. AxonPath requires square pixels; set both to the same value in the
-Image tab.
+Pixel width and height differ by more than 1%. AxonPath requires square pixels; set both to the
+same value in the Image tab. Smaller differences, which often come from rounding in the stored
+calibration, are accepted. The check runs before segmentation, so previous results are kept.
 
 ## The GPU is not listed, or not used
 
