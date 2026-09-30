@@ -4,7 +4,7 @@ Segmentation is rarely perfect. The **Review & Edit** section of the AxonPath pa
 results by hand with QuPath's drawing tools and then recompute the hierarchy and measurements,
 without running the model again.
 
-<!-- screenshot: Review & Edit section -->
+![Correcting a fibre: converting detections to annotations, editing a boundary and recomputing the measurements](images/review-and-edit.gif)
 
 ## Why objects need converting
 

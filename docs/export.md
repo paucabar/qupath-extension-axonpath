@@ -6,13 +6,13 @@ you choose which project images to include.
 
 The current image is saved before the dialog opens, so unsaved results are included.
 
-<!-- screenshot: Data Export section -->
+![The Data Export section of the AxonPath panel](images/data-export.png)
 
 ## Export measurements
 
 Exports the measurements of one object class, from the selected images, into a single table.
 
-<!-- screenshot: Export Measurements dialog -->
+![The Export Measurements dialog](images/export-measurements.png)
 
 1. Click **Export measurements…**.
 2. **Class:** choose `Fibre`, `Axon` or `InnerCylinder`. Each class is exported to its own table,
@@ -46,7 +46,7 @@ Export after your last manual edit and recompute: recomputing creates new object
 
 Exports images together with their annotations, in one of two modes.
 
-<!-- screenshot: Export Annotations dialog -->
+![The Export Annotations dialog](images/export-annotations.png)
 
 1. Click **Export annotations…**.
 2. **Mode:** **Training** or **Raw (GeoJSON)** (see below).

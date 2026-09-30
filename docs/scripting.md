@@ -8,7 +8,7 @@ This is the way to process many images: write the script once and use QuPath's *
 Open the template from **Extensions → AxonPath → Segmentation script template**. It opens in
 QuPath's script editor as a new, unsaved script.
 
-<!-- screenshot: script editor with the template open -->
+![The segmentation script template open in QuPath's script editor](images/script-template.png)
 
 Edit the configuration block at the top:
 

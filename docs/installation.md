@@ -18,7 +18,7 @@ AxonPath is installed from its own extension catalog, with QuPath's Extension Ma
 
 AxonPath then appears under **Extensions → AxonPath**.
 
-<!-- screenshot: Extension Manager with the AxonPath catalog -->
+![The Extension Manager with the AxonPath catalog added](images/catalog.png)
 
 ## Installing PyTorch
 
