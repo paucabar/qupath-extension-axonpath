@@ -5,7 +5,7 @@ plugins {
 
 qupathExtension {
     name = "qupath-extension-axonpath"
-    version = "0.1.1"
+    version = "0.1.2-SNAPSHOT"
     group = "io.github.paucabar"
     description = "Run AxonPath deep learning models to segment fibres, inner cylinders and axons in EM and brightfield images, with morphometric measurements and tools for manual correction"
     automaticModule = "qupath.extension.axonpath"
