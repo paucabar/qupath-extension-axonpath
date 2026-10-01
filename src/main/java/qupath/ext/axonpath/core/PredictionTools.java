@@ -228,7 +228,7 @@ public class PredictionTools {
     }
 
     /**
-     * Runs ImageJ's Particle Analyzer on a binary image.
+     * Runs ImageJ's Particle Analyzer on a binary image whose foreground is 255.
      * Always returns an output ImagePlus with a standard (non-inverted) LUT.
      */
     static ImagePlus analyzeParticles(ImagePlus imp, int options, int measurements,
@@ -237,7 +237,10 @@ public class PredictionTools {
         var rt = new ResultsTable();
         var pa = new ParticleAnalyzer(options, measurements, rt, minSize, maxSize, minCircularity, maxCircularity);
         ImageProcessor ip = imp.getProcessor();
-        ip.setBinaryThreshold();
+        // Threshold the foreground explicitly. setBinaryThreshold() would pick 255 or 0 from
+        // ImageJ's global "Black background" preference, and with it off the background was
+        // analysed instead (one huge particle).
+        ip.setThreshold(255, 255, ImageProcessor.NO_LUT_UPDATE);
         pa.setHideOutputImage(true);
         pa.analyze(imp, ip);
         ImagePlus output = pa.getOutputImage();
