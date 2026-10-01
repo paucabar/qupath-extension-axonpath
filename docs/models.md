@@ -25,6 +25,9 @@ They are distributed as `.zip` files. Download the ones you need and unzip each 
 When citing the models, use the DOI above. Each model folder also contains a `README.md` with its
 details and citation.
 
+The annotated images used to train the models are available as a separate Zenodo record:
+[doi.org/10.5281/zenodo.23084690](https://doi.org/10.5281/zenodo.23084690).
+
 ## Setting up the model directory
 
 Put all model folders inside one directory:
