@@ -37,11 +37,14 @@ for PyTorch and GPU setup.
 ## Quick start
 
 1. [Download the models](docs/models.md) and select their directory in the AxonPath panel.
-2. Open an image with its pixel size set.
-3. Select the annotations to process, or click **Annotate whole image**.
-4. Choose a model and input channel, and click **Run**.
-5. Check the results and [measurements](docs/measurements.md); correct errors with
+2. Create a [QuPath project](https://qupath.readthedocs.io/en/stable/docs/tutorials/projects.html)
+   (**File → Project… → Create project**) and add your images. Exporting results requires a project.
+3. Open an image with its pixel size set.
+4. Select the annotations to process, or click **Annotate whole image**.
+5. Choose a model and input channel, and click **Run**.
+6. Check the results and [measurements](docs/measurements.md); correct errors with
    [Review & Edit](docs/review-and-edit.md).
+7. [Export the measurements](docs/export.md).
 
 ## Documentation
 

@@ -4,6 +4,9 @@ The **Data Export** section of the AxonPath panel exports results from the image
 measurements as a table, or annotations as images for training or sharing. Both open a dialog where
 you choose which project images to include.
 
+The buttons are disabled when no project is open. To create one, see QuPath's
+[Projects](https://qupath.readthedocs.io/en/stable/docs/tutorials/projects.html) page.
+
 The current image is saved before the dialog opens, so unsaved results are included.
 
 ![The Data Export section of the AxonPath panel](images/data-export.png)
@@ -11,6 +14,12 @@ The current image is saved before the dialog opens, so unsaved results are inclu
 ## Export measurements
 
 Exports the measurements of one object class, from the selected images, into a single table.
+
+**For g-ratios and fibre morphometry, export `Fibre`.** Each fibre row already includes the axon
+measurements (`Axon Area`, `Axon Count`, `Axon g-ratio`), the EM inner cylinder measurements and the
+intensities of every compartment (see [Measurements](measurements.md#fibre-measurements)). Export
+`Axon` or `InnerCylinder` only if you need one row per object, e.g. to analyse the individual axons
+of fibres with several axons.
 
 ![The Export Measurements dialog](images/export-measurements.png)
 

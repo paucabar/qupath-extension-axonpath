@@ -59,6 +59,13 @@ They act on a selected **parent** annotation, not on the fibres themselves:
 - **Convert detections to annotations** needs AxonPath detections under the selected parent.
 - **Recompute**, **lock** and **unlock** need AxonPath annotations under the selected parent.
 
+## Export buttons are disabled
+
+**Export measurements** and **Export annotations** work on the images of a QuPath project, so they
+are disabled when an image is opened on its own. Create a project (**File → Project… → Create
+project**, in an empty folder), add your images to it and open them from the *Project* tab. See
+QuPath's [Projects](https://qupath.readthedocs.io/en/stable/docs/tutorials/projects.html) page.
+
 ## "No Fibre detections with children found — run AxonPath first"
 
 3D tracing uses fibres that are detections. Run segmentation first, and if you converted results to

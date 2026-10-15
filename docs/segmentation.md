@@ -14,7 +14,12 @@ Open the panel from **Extensions → AxonPath → AxonPath**.
   (*Pixel width* / *Pixel height*) and double-click a value to set it. Pixel width and height must be
   equal.
 - **Use a project** if you want to export measurements or annotations later. Export works on project
-  images.
+  images (see QuPath's [Projects](https://qupath.readthedocs.io/en/stable/docs/tutorials/projects.html)
+  page).
+- **Optional: display single-channel images in grayscale.** QuPath may show a single-channel image
+  with a colour tint, which can make objects harder to see when editing. Open **View →
+  Brightness/Contrast**, double-click the channel and set its colour to white. This only changes the
+  display, not the segmentation or the measurements.
 
 ## 2. Choose a model
 
@@ -49,6 +54,11 @@ the model's, so the model sees structures larger than it was trained on. Expect 
 consider a model trained at a resolution closer to your images.
 
 When the image and model pixel sizes differ by less than 10%, the image is not rescaled at all.
+
+The factor is also a check on the image calibration. For example, a brightfield image with 0.065 µm
+pixels should show a factor close to ×1. If the factor is far from what you expect for your
+microscope, check the image pixel size: a misplaced decimal point or a value entered in the wrong
+unit (nm instead of µm) makes the model see structures at the wrong size.
 
 ### Min diameter (px)
 
