@@ -20,6 +20,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TitledPane;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.VBox;
@@ -29,6 +30,7 @@ import org.controlsfx.dialog.ProgressDialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.axonpath.core.AxonPathClasses;
+import qupath.ext.axonpath.core.DeviceTools;
 import qupath.ext.axonpath.core.HierarchyTools;
 import qupath.ext.axonpath.core.PredictionTools;
 import qupath.ext.axonpath.core.PytorchManager;
@@ -70,8 +72,21 @@ public class AxonPathController extends BorderPane {
      */
     private record RunSettings(Path modelPath, ImageData<BufferedImage> imageData, int channel, String device,
                                double pixelSize, double minDiameter,
-                               boolean predictInnerCylinder, boolean removeEdgeFibres) {}
+                               boolean predictInnerCylinder, boolean removeEdgeFibres) {
 
+        /** The same settings on CPU, used after inference fails on another device. */
+        RunSettings onCpu() {
+            return new RunSettings(modelPath, imageData, channel, DeviceTools.CPU,
+                    pixelSize, minDiameter, predictInnerCylinder, removeEdgeFibres);
+        }
+    }
+
+    // True while refreshDevices() rebuilds the device list, so that the selection changes it
+    // makes are not saved as the user's preferred device
+    private boolean updatingDevices = false;
+
+    @FXML
+    private TitledPane hardwarePane;
     @FXML
     private VBox processingSettingsBox;
     @FXML
@@ -264,6 +279,8 @@ public class AxonPathController extends BorderPane {
             Dialogs.showErrorMessage("AxonPath extension", resources.getString("ui.error.invalid-params"));
             return;
         }
+        // Picks up a PyTorch engine (and its GPUs) downloaded since the panel was opened
+        refreshDevices();
         var settings = new RunSettings(modelPath, QP.getCurrentImageData(), getSelectedChannel(), getDevice(),
                 pixelSize, minDiameter,
                 predictInnerCylinderCheckBox.isSelected(), removeEdgeFibresCheckBox.isSelected());
@@ -286,6 +303,7 @@ public class AxonPathController extends BorderPane {
         Platform.runLater(() -> {
             boolean scheduleNext = false;
             boolean finishedAll = false;
+            boolean retryOnCpu = false;
             try {
                 // Switching image mid-run could prompt to save the old image while objects are
                 // still being added to it, so the run stops instead
@@ -308,10 +326,22 @@ public class AxonPathController extends BorderPane {
                 finishedAll = !scheduleNext;
             } catch (Exception | LinkageError e) {
                 // LinkageError covers native library failures from DJL/PyTorch (e.g. UnsatisfiedLinkError)
-                logger.error("AxonPath inference failed for parent {}", index, e);
-                Dialogs.showErrorMessage("AxonPath extension", describeError(e));
+                if (!DeviceTools.isCpu(settings.device())) {
+                    // Same fallback as AxonPathSegmenter: retry this parent on CPU and stay on CPU
+                    // for the rest of the run. Device errors happen before new objects are added.
+                    logger.warn("Inference failed on device '{}', retrying on CPU for this and all remaining parents",
+                            settings.device(), e);
+                    Dialogs.showWarningNotification("AxonPath extension", MessageFormat.format(
+                            resources.getString("ui.run.device-fallback"), settings.device()));
+                    retryOnCpu = true;
+                } else {
+                    logger.error("AxonPath inference failed for parent {}", index, e);
+                    Dialogs.showErrorMessage("AxonPath extension", describeError(e));
+                }
             } finally {
-                if (scheduleNext) {
+                if (retryOnCpu) {
+                    runInferenceStep(parents, index, settings.onCpu(), totalObjects);
+                } else if (scheduleNext) {
                     setStatusLabel(MessageFormat.format(
                             resources.getString("ui.run.progress"), index + 2, parents.size()));
                     runInferenceStep(parents, index + 1, settings, totalObjects);
@@ -720,17 +750,40 @@ public class AxonPathController extends BorderPane {
     }
 
     private void configureDevices() {
-        deviceChoiceBox.getItems().addAll(PytorchManager.getAvailableDevices());
-        deviceChoiceBox.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) ->
-                preferredDevice.set(newVal));
-        if (preferredDevice.get() != null) {
-            deviceChoiceBox.setValue(preferredDevice.get());
+        // Only choices made by the user are saved; refreshDevices() also changes the selection
+        deviceChoiceBox.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+            if (!updatingDevices && newVal != null)
+                preferredDevice.set(newVal);
+        });
+        refreshDevices();
+        // The PyTorch engine may be downloaded while the panel is open (Manage DJL engines),
+        // so the list is rebuilt whenever the Hardware section is expanded
+        hardwarePane.expandedProperty().addListener((obs, wasExpanded, isExpanded) -> {
+            if (isExpanded)
+                refreshDevices();
+        });
+    }
+
+    /**
+     * Rebuilds the device list from the installed PyTorch engine, and selects the saved preferred
+     * device if it is available, otherwise CPU. The saved preference is kept either way, so a GPU
+     * chosen earlier is selected again once it becomes available.
+     */
+    private void refreshDevices() {
+        var available = new ArrayList<>(PytorchManager.getAvailableDevices());
+        // Normalised because AxonPath 0.1.0/0.1.1 saved GPUs as "gpu"
+        String preferred = DeviceTools.normalise(preferredDevice.get());
+        updatingDevices = true;
+        try {
+            deviceChoiceBox.getItems().setAll(available);
+            deviceChoiceBox.setValue(available.contains(preferred) ? preferred : DeviceTools.CPU);
+        } finally {
+            updatingDevices = false;
         }
     }
 
     private String getDevice() {
-        String device = deviceChoiceBox.getValue();
-        return (device == null || device.isBlank()) ? "cpu" : device;
+        return DeviceTools.normalise(deviceChoiceBox.getValue());
     }
 
     private void refreshModels(String pathString) {

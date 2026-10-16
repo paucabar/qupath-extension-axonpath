@@ -93,11 +93,10 @@ with several channels, choose the one showing the fibres.
 Open the **Hardware** section to choose the **Preferred device**:
 
 - **cpu** always works.
-- **gpu** appears if PyTorch detects a supported NVIDIA GPU.
-- **mps** appears on Macs, for Apple Silicon GPUs.
+- **gpu0** (and **gpu1**, ...) and **mps** appear only on computers set up for a GPU; see the
+  optional [GPU setup](gpu.md).
 
-GPU options are only listed once the PyTorch engine has been downloaded (see
-[Installation](installation.md#installing-pytorch)). If in doubt, use CPU. The choice is remembered.
+If in doubt, use CPU. The choice is remembered.
 
 ## 6. Select the regions to segment
 

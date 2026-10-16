@@ -7,13 +7,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.axonpath.core.AxonPathClasses;
+import qupath.ext.axonpath.core.DeviceTools;
 import qupath.ext.axonpath.core.PredictionTools;
-import qupath.ext.axonpath.core.PytorchManager;
 import qupath.fx.utils.FXUtils;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.images.ImageData;
@@ -44,8 +43,6 @@ public class AxonPathSegmenter {
     // Thresholds used by the GUI; not exposed because they are tied to how the models are trained
     private static final double SDT_MIN_THRESHOLD = 0.5;
     private static final double SDT_MAX_THRESHOLD = 1;
-
-    private static final String CPU = "cpu";
 
     private static final Set<PathClass> AXONPATH_CLASSES = Set.of(
             PathClass.getInstance(AxonPathClasses.FIBRE),
@@ -111,7 +108,7 @@ public class AxonPathSegmenter {
 
         int channel = resolveChannel(imageData);  // 1-based, as used by PredictionTools
         ensureClassesAvailable();
-        String activeDevice = checkDevice(device);
+        String activeDevice = DeviceTools.checkAvailable(device);
 
         List<PathObject> validParents = new ArrayList<>();
         for (var parent : parents) {
@@ -127,14 +124,15 @@ public class AxonPathSegmenter {
             logger.info("AxonPath: processing parent {}/{}", i + 1, validParents.size());
             try {
                 results.addAll(run(imageData, parent, channel, activeDevice));
-            } catch (RuntimeException | UnsatisfiedLinkError e) {
-                if (CPU.equals(activeDevice))
+            } catch (RuntimeException | LinkageError e) {
+                if (DeviceTools.isCpu(activeDevice))
                     throw e;
-                // Inference runs before any objects are added, so retrying on CPU is safe.
-                // Stay on CPU for the remaining parents instead of failing on each one.
+                // Device errors happen while the model is loaded or run, before any new objects are
+                // added (only the parent's previous results have been removed), so retrying on CPU
+                // is safe. Stay on CPU for the remaining parents instead of failing on each one.
                 logger.warn("Inference failed on device '{}', retrying on CPU for this and all remaining parents",
                         activeDevice, e);
-                activeDevice = CPU;
+                activeDevice = DeviceTools.CPU;
                 results.addAll(run(imageData, parent, channel, activeDevice));
             }
         }
@@ -178,23 +176,6 @@ public class AxonPathSegmenter {
     }
 
     /**
-     * Returns the requested device if PyTorch reports it as available, otherwise CPU.
-     * If the PyTorch engine has not been downloaded yet, availability cannot be checked
-     * and the requested device is returned unchanged (the runtime fallback still applies).
-     */
-    private static String checkDevice(String requested) {
-        if (CPU.equals(requested) || !PytorchManager.hasPyTorchEngine())
-            return requested;
-        // Device names can include an index (e.g. "gpu:1"); availability is reported per type
-        String type = requested.split(":")[0];
-        if (PytorchManager.getAvailableDevices().contains(type))
-            return requested;
-        logger.warn("Device '{}' is not available (available: {}), using CPU instead",
-                requested, PytorchManager.getAvailableDevices());
-        return CPU;
-    }
-
-    /**
      * Add the AxonPath classes to QuPath's class list when running with the GUI.
      * The list is observed by the UI, so it must be modified on the application thread.
      */
@@ -214,7 +195,7 @@ public class AxonPathSegmenter {
         private final Path modelPath;
         private Integer channelIndex = 0;
         private String channelName;
-        private String device = CPU;
+        private String device = DeviceTools.CPU;
         private Double pixelSize;
         private Double minDiameter;
         private Boolean predictInnerCylinder;
@@ -244,11 +225,12 @@ public class AxonPathSegmenter {
         }
 
         /**
-         * PyTorch device: {@code "cpu"} (default), {@code "gpu"} (or {@code "gpu:1"} etc.), or {@code "mps"}
-         * (Apple Silicon). Falls back to CPU if the device is not available.
+         * PyTorch device: {@code "cpu"} (default), {@code "gpu"} (the first NVIDIA GPU; {@code "gpu1"} for
+         * the second, etc.), or {@code "mps"} (Apple Silicon). The older form {@code "gpu:1"} is also accepted.
+         * Falls back to CPU if the device is not available.
          */
         public Builder device(String device) {
-            this.device = device.toLowerCase(Locale.ROOT);
+            this.device = DeviceTools.normalise(device);
             return this;
         }
 

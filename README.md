@@ -20,7 +20,7 @@ without re-running the model, traced across z-slices, and exported for analysis 
 - QuPath **0.7.0** or later
 - The PyTorch engine, downloaded once with **Extensions → Deep Java Library → Manage DJL engines**
   before the first run (see [Installation](docs/installation.md))
-- A GPU is optional; models run on CPU too
+- A GPU is optional; models run on CPU too (see [GPU setup](docs/gpu.md))
 
 ## Installation
 
@@ -32,7 +32,7 @@ AxonPath is installed from its extension catalog, through QuPath's Extension Man
 3. Install **AxonPath** from the extension list and restart QuPath if prompted.
 
 The extension then appears under **Extensions → AxonPath**. See [Installation](docs/installation.md)
-for PyTorch and GPU setup.
+for the PyTorch setup.
 
 ## Quick start
 
@@ -50,7 +50,8 @@ for PyTorch and GPU setup.
 
 | Page | Content |
 |---|---|
-| [Installation](docs/installation.md) | Installing AxonPath and PyTorch, GPU support |
+| [Installation](docs/installation.md) | Installing AxonPath and PyTorch |
+| [GPU setup](docs/gpu.md) | Optional: running models on an NVIDIA GPU or Apple Silicon |
 | [Models](docs/models.md) | Available models, download, model directory, model format |
 | [Segmentation](docs/segmentation.md) | Running models from the AxonPath panel, parameters |
 | [Review & Edit](docs/review-and-edit.md) | Correcting results by hand and recomputing |

@@ -48,9 +48,10 @@ calibration, are accepted. The check runs before segmentation, so previous resul
 
 - GPU options appear only once the PyTorch engine is installed (see
   [Installation](installation.md#installing-pytorch)).
-- NVIDIA GPUs need a compatible CUDA installation. **Extensions → Deep Java Library → Manage DJL
-  engines** shows whether CUDA was found.
-- In scripts, a device that is not available is replaced with CPU, with a warning in the log.
+- NVIDIA GPUs need a one-time setup, and QuPath must be started with the launch script it creates;
+  see [GPU setup](gpu.md#if-the-gpu-is-not-listed).
+- A device that is not available is replaced with CPU, and if the model fails on a GPU, AxonPath
+  continues on CPU. Both are reported in the log (**View → Show log**).
 
 ## Buttons in Review & Edit are disabled
 
