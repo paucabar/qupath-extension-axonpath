@@ -59,6 +59,10 @@ They act on a selected **parent** annotation, not on the fibres themselves:
 - **Convert detections to annotations** needs AxonPath detections under the selected parent.
 - **Recompute**, **lock** and **unlock** need AxonPath annotations under the selected parent.
 
+While **Run** or **Recompute** is in progress, the whole AxonPath panel is disabled. It is enabled
+again when processing finishes or stops with an error. Switching to another image during processing
+stops it after the current parent.
+
 ## Export buttons are disabled
 
 **Export measurements** and **Export annotations** work on the images of a QuPath project, so they

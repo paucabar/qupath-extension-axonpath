@@ -1,5 +1,6 @@
 package qupath.ext.axonpath.ui;
 
+import java.awt.image.BufferedImage;
 import java.beans.PropertyChangeListener;
 import java.io.File;
 import java.io.IOException;
@@ -7,6 +8,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ResourceBundle;
 import javafx.application.Platform;
+import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.StringProperty;
 import javafx.concurrent.Task;
 import javafx.fxml.FXML;
@@ -19,6 +22,7 @@ import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.VBox;
 import javafx.util.StringConverter;
 import org.controlsfx.control.SearchableComboBox;
 import org.controlsfx.dialog.ProgressDialog;
@@ -39,6 +43,7 @@ import java.util.List;
 import java.util.stream.Stream;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.prefs.PathPrefs;
+import qupath.lib.images.ImageData;
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.PathObjects;
 import qupath.lib.objects.classes.PathClass;
@@ -51,8 +56,34 @@ import javafx.fxml.FXMLLoader;
 public class AxonPathController extends BorderPane {
     private static final ResourceBundle resources = ResourceBundle.getBundle("qupath.ext.axonpath.ui.strings");
     private static final Logger logger = LoggerFactory.getLogger(AxonPathController.class);
-    private boolean isRunning = false;
 
+    /**
+     * True while Run or Recompute is processing parents. Both process one parent per FX pulse so
+     * the UI stays responsive, which also means the user could click other buttons in between
+     * (e.g. Trace Axons on a half-finished hierarchy). The panel is disabled while this is true.
+     */
+    private final BooleanProperty running = new SimpleBooleanProperty(false);
+
+    /**
+     * Inputs of one Run, captured when Run is clicked. Every parent of the run uses these values,
+     * even if the user changes the image, a picker or a parameter field while the run is going on.
+     */
+    private record RunSettings(Path modelPath, ImageData<BufferedImage> imageData, int channel, String device,
+                               double pixelSize, double minDiameter,
+                               boolean predictInnerCylinder, boolean removeEdgeFibres) {}
+
+    @FXML
+    private VBox processingSettingsBox;
+    @FXML
+    private VBox hardwareBox;
+    @FXML
+    private VBox reviewEditBox;
+    @FXML
+    private VBox tracingBox;
+    @FXML
+    private VBox exportBox;
+    @FXML
+    private Button runButton;
     @FXML
     private SearchableComboBox<Path> modelChoiceBox;
     @FXML
@@ -153,6 +184,20 @@ public class AxonPathController extends BorderPane {
         exportMeasurementsButton.disableProperty().bind(noProject);
         exportAnnotationsButton.disableProperty().bind(noProject);
 
+        // Disable the panel while Run or Recompute is in progress. A disabled container also
+        // disables everything inside it, so the per-control enable logic (the bindings above,
+        // refreshPostProcessingButtons(), refreshModelParams()) is left as it is and takes effect
+        // again once processing ends. The status label is outside these containers, so the
+        // progress text stays readable.
+        for (var node : List.of(processingSettingsBox, runButton, hardwareBox, reviewEditBox, tracingBox, exportBox))
+            node.disableProperty().bind(running);
+        running.addListener((obs, wasRunning, isRunning) -> {
+            if (!isRunning) {
+                refreshPostProcessingButtons();
+                refreshStatusLabel();
+            }
+        });
+
         // Refresh channels and post-processing buttons whenever the image changes
         QuPathGUI.getInstance().imageDataProperty().addListener(
                 (obs, oldImage, newImage) -> {
@@ -187,6 +232,7 @@ public class AxonPathController extends BorderPane {
 
     @FXML
     private void run() {
+        if (running.get()) return;
         Path modelPath = modelChoiceBox.getSelectionModel().getSelectedItem();
         if (modelPath == null) {
             Dialogs.showErrorMessage("AxonPath extension", resources.getString("ui.error.no-model"));
@@ -218,61 +264,96 @@ public class AxonPathController extends BorderPane {
             Dialogs.showErrorMessage("AxonPath extension", resources.getString("ui.error.invalid-params"));
             return;
         }
-        boolean predictInnerCylinder = predictInnerCylinderCheckBox.isSelected();
-        boolean removeEdgeFibres = removeEdgeFibresCheckBox.isSelected();
-        final double finalPixelSize = pixelSize;
-        final double finalMinDiameter = minDiameter;
+        var settings = new RunSettings(modelPath, QP.getCurrentImageData(), getSelectedChannel(), getDevice(),
+                pixelSize, minDiameter,
+                predictInnerCylinderCheckBox.isSelected(), removeEdgeFibresCheckBox.isSelected());
 
         ensureAxonPathClasses();
-        isRunning = true;
+        running.set(true);
         setStatusLabel(MessageFormat.format(
                 resources.getString("ui.run.progress"), 1, selectedObjects.size()));
-        Platform.runLater(() -> runInferenceStep(selectedObjects, 0, modelPath, finalPixelSize, finalMinDiameter,
-                predictInnerCylinder, removeEdgeFibres, new int[]{0}));
+        Platform.runLater(() -> runInferenceStep(selectedObjects, 0, settings, new int[]{0}));
     }
 
     /**
      * Processes one parent object per FX pulse, yielding between each so the status
      * label repaints visibly. All hierarchy modifications stay on the FX thread.
+     * <p>
+     * The {@code finally} block always either schedules the next parent or ends the run, so the
+     * panel is re-enabled whatever happens, including unchecked exceptions from inference.
      */
-    private void runInferenceStep(List<PathObject> parents, int index,
-                                  Path modelPath, double pixelSize, double minDiameter,
-                                  boolean predictInnerCylinder, boolean removeEdgeFibres, int[] totalObjects) {
+    private void runInferenceStep(List<PathObject> parents, int index, RunSettings settings, int[] totalObjects) {
         Platform.runLater(() -> {
+            boolean scheduleNext = false;
+            boolean finishedAll = false;
             try {
-                var result = PredictionTools.runAxonPath(
-                        modelPath, QP.getCurrentImageData(), parents.get(index), 0.5, 1,
-                        getSelectedChannel(), pixelSize, minDiameter, predictInnerCylinder, removeEdgeFibres, getDevice());
-                totalObjects[0] += result.size();
-            } catch (IOException e) {
+                // Switching image mid-run could prompt to save the old image while objects are
+                // still being added to it, so the run stops instead
+                if (QP.getCurrentImageData() != settings.imageData()) {
+                    Dialogs.showWarningNotification("AxonPath extension", MessageFormat.format(
+                            resources.getString("ui.error.image-changed"), index, parents.size()));
+                    return;
+                }
+                var parent = parents.get(index);
+                if (parent.getParent() == null) {
+                    logger.warn("Parent {} was removed from the hierarchy during the run, skipping", index);
+                } else {
+                    var result = PredictionTools.runAxonPath(
+                            settings.modelPath(), settings.imageData(), parent, 0.5, 1,
+                            settings.channel(), settings.pixelSize(), settings.minDiameter(),
+                            settings.predictInnerCylinder(), settings.removeEdgeFibres(), settings.device());
+                    totalObjects[0] += result.size();
+                }
+                scheduleNext = index + 1 < parents.size();
+                finishedAll = !scheduleNext;
+            } catch (Exception | LinkageError e) {
+                // LinkageError covers native library failures from DJL/PyTorch (e.g. UnsatisfiedLinkError)
                 logger.error("AxonPath inference failed for parent {}", index, e);
-                Dialogs.showErrorMessage("AxonPath extension", e.getMessage());
-                onInferenceComplete(parents, totalObjects);
-                return;
-            }
-            int next = index + 1;
-            if (next < parents.size()) {
-                setStatusLabel(MessageFormat.format(
-                        resources.getString("ui.run.progress"), next + 1, parents.size()));
-                runInferenceStep(parents, next, modelPath, pixelSize, minDiameter,
-                        predictInnerCylinder, removeEdgeFibres, totalObjects);
-            } else {
-                onInferenceComplete(parents, totalObjects);
+                Dialogs.showErrorMessage("AxonPath extension", describeError(e));
+            } finally {
+                if (scheduleNext) {
+                    setStatusLabel(MessageFormat.format(
+                            resources.getString("ui.run.progress"), index + 2, parents.size()));
+                    runInferenceStep(parents, index + 1, settings, totalObjects);
+                } else {
+                    onInferenceComplete(parents, totalObjects, finishedAll);
+                }
             }
         });
     }
 
-    private void onInferenceComplete(List<PathObject> parents, int[] totalObjects) {
-        isRunning = false;
+    /**
+     * Ends a run.
+     *
+     * @param finishedAll true if every parent was processed; false if the run stopped early
+     *                    (error or image change), in which case the user has already been told why
+     */
+    private void onInferenceComplete(List<PathObject> parents, int[] totalObjects, boolean finishedAll) {
         logger.info("{} total objects created by AxonPath", totalObjects[0]);
         var allFibres = parents.stream()
                 .flatMap(p -> p.getChildObjects().stream())
                 .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
                 .toList();
-        if (allFibres.isEmpty())
+        if (finishedAll && allFibres.isEmpty())
             Dialogs.showWarningNotification("AxonPath extension", resources.getString("ui.error.no-valid-fibres"));
-        refreshPostProcessingButtons();
-        refreshStatusLabel();
+        // The listener on running refreshes the buttons and the status label
+        running.set(false);
+    }
+
+    /**
+     * Returns a message for the user describing an exception. Model inference wraps DJL errors
+     * in a plain {@code RuntimeException}, whose own message is only the cause's class and
+     * message, so the cause is reported instead. Falls back to the exception type when there is
+     * no message at all.
+     */
+    static String describeError(Throwable e) {
+        Throwable reported = e;
+        if (reported.getClass() == RuntimeException.class && reported.getCause() != null)
+            reported = reported.getCause();
+        String message = reported.getMessage();
+        if (message == null || message.isBlank())
+            return MessageFormat.format(resources.getString("ui.error.unexpected"), reported.getClass().getSimpleName());
+        return message;
     }
 
     @FXML
@@ -368,7 +449,9 @@ public class AxonPathController extends BorderPane {
 
     @FXML
     private void recompute() {
-        if (QP.getCurrentImageData() == null) return;
+        if (running.get()) return;
+        var imageData = QP.getCurrentImageData();
+        if (imageData == null) return;
 
         var parents = QP.getSelectedObjects().stream()
                 .filter(p -> {
@@ -381,11 +464,21 @@ public class AxonPathController extends BorderPane {
                 .toList();
         if (parents.isEmpty()) return;
 
+        // Checked before anything is touched: recomputeForParent() removes the edited annotations
+        // first and computes measurements last, so on an uncalibrated image the measurement step
+        // would fail after the user's edits had already been taken out of the hierarchy
+        try {
+            QuantificationTools.requireIsotropicPixels(imageData.getServer().getPixelCalibration());
+        } catch (IllegalArgumentException e) {
+            Dialogs.showErrorMessage("AxonPath extension", e.getMessage());
+            return;
+        }
+
         ensureAxonPathClasses();
-        isRunning = true;
+        running.set(true);
         setStatusLabel(MessageFormat.format(
                 resources.getString("ui.run.progress"), 1, parents.size()));
-        Platform.runLater(() -> recomputeStep(parents, 0));
+        Platform.runLater(() -> recomputeStep(imageData, parents, 0));
     }
 
     /**
@@ -393,27 +486,47 @@ public class AxonPathController extends BorderPane {
      * between each so the status label repaints and the UI stays responsive. A fully-selected
      * 3D z-stack can mean recomputing dozens of parents at once — without yielding, the whole
      * batch would run as a single unbroken block on the FX thread.
+     * <p>
+     * Like {@link #runInferenceStep}, the {@code finally} block always either schedules the next
+     * parent or ends the batch, so the panel is re-enabled whatever happens.
      */
-    private void recomputeStep(List<PathObject> parents, int index) {
+    private void recomputeStep(ImageData<BufferedImage> imageData, List<PathObject> parents, int index) {
         Platform.runLater(() -> {
-            recomputeForParent(parents.get(index));
-
-            int next = index + 1;
-            if (next < parents.size()) {
-                setStatusLabel(MessageFormat.format(
-                        resources.getString("ui.run.progress"), next + 1, parents.size()));
-                recomputeStep(parents, next);
-            } else {
-                isRunning = false;
-                logger.info("Hierarchy and measurements recomputed");
-                refreshPostProcessingButtons();
+            boolean scheduleNext = false;
+            try {
+                if (QP.getCurrentImageData() != imageData) {
+                    Dialogs.showWarningNotification("AxonPath extension", MessageFormat.format(
+                            resources.getString("ui.error.image-changed"), index, parents.size()));
+                    return;
+                }
+                var parent = parents.get(index);
+                if (parent.getParent() == null)
+                    logger.warn("Parent {} was removed from the hierarchy during recompute, skipping", index);
+                else
+                    recomputeForParent(imageData, parent);
+                scheduleNext = index + 1 < parents.size();
+            } catch (Exception e) {
+                logger.error("Recompute failed for parent {}", index, e);
+                Dialogs.showErrorMessage("AxonPath extension", describeError(e));
+            } finally {
+                if (scheduleNext) {
+                    setStatusLabel(MessageFormat.format(
+                            resources.getString("ui.run.progress"), index + 2, parents.size()));
+                    recomputeStep(imageData, parents, index + 1);
+                } else {
+                    onRecomputeComplete();
+                }
             }
         });
     }
 
-    private void recomputeForParent(PathObject parentObject) {
-        var imageData = QP.getCurrentImageData();
-        if (imageData == null) return;
+    private void onRecomputeComplete() {
+        logger.info("Hierarchy and measurements recomputed");
+        // The listener on running refreshes the buttons and clears the progress text
+        running.set(false);
+    }
+
+    private void recomputeForParent(ImageData<BufferedImage> imageData, PathObject parentObject) {
         var hierarchy = imageData.getHierarchy();
         var parentROI = parentObject.getROI();
         var parentPlane = parentROI.getImagePlane();
@@ -577,6 +690,8 @@ public class AxonPathController extends BorderPane {
         dialog.setHeaderText(resources.getString("ui.tracing.progress.header"));
         dialog.setOnShown(e -> dialog.getDialogPane().setGraphic(null));
 
+        // No running check needed here: the progress dialog is modal, and Trace Axons is disabled
+        // while Run or Recompute is in progress
         task.setOnSucceeded(e -> dialog.close());
         task.setOnFailed(e -> {
             logger.error("Axon tracing failed", task.getException());
@@ -776,7 +891,7 @@ public class AxonPathController extends BorderPane {
     }
 
     private void refreshStatusLabel() {
-        if (isRunning) return;
+        if (running.get()) return;
         var selected = QP.getSelectedObjects();
         boolean hasSelection = selected != null && !selected.isEmpty();
         labelMessage.setVisible(!hasSelection);
