@@ -4,8 +4,7 @@
 
 - [QuPath](https://qupath.github.io) **0.7.0** or later
 - An internet connection to download the PyTorch engine, once
-- A GPU is optional. Models run on CPU; a supported NVIDIA GPU, or an Apple Silicon Mac, can make
-  them faster
+- A GPU is optional: models run on CPU
 
 ## Installing AxonPath
 
@@ -31,14 +30,8 @@ running AxonPath for the first time**:
 
 The engine is stored locally and reused by every extension that uses DJL.
 
-### GPU support
-
-- **NVIDIA GPUs** need a CUDA version compatible with the PyTorch engine. The DJL engine manager
-  shows whether CUDA was found.
-- **Apple Silicon** Macs can use the GPU through MPS.
-
-Once PyTorch is available, the devices it supports appear under **Hardware → Preferred device** in
-the AxonPath panel. When a GPU is not working, AxonPath can always run on CPU.
+This is all AxonPath needs: it runs on CPU. Using a GPU is optional and described separately in
+[GPU setup](gpu.md).
 
 ## Updating
 
@@ -49,3 +42,4 @@ extensions** and update AxonPath when a new version is listed.
 
 - [Download the models](models.md)
 - [Segment your first image](segmentation.md)
+- Optional: [GPU setup](gpu.md)

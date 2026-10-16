@@ -37,7 +37,7 @@ def segmenter = AxonPathSegmenter
     .builder(modelPath)
     .channel(0)                   // Channel by 0-based index (first channel = 0, shown as C1 in the AxonPath panel)
 //  .channel("YOUR_CHANNEL_NAME") // Or by name, safer if channel order differs between images
-    .device("cpu")                // "cpu", "gpu" or "mps" (Apple Silicon); falls back to CPU if unavailable
+    .device("cpu")                // "cpu", "gpu" ("gpu1" for a second GPU) or "mps" (Apple Silicon); falls back to CPU if unavailable
     .removeEdgeFibres(false)      // Remove fibres touching the parent annotation boundary
 //  .pixelSize(0.02)              // Target pixel size in µm (default: from the model's rdf.yaml)
 //  .minDiameter(5)               // Minimum object diameter in pixels at the target pixel size (default: from rdf.yaml)

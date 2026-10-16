@@ -82,7 +82,7 @@ def segmenter = AxonPathSegmenter
 |---|---|---|
 | `.channel(int)` | `0` | Channel to segment, by **0-based** index: the first channel is `0`. The AxonPath panel shows channels starting at C1, so C1 is `0`, C2 is `1` and so on |
 | `.channel(String)` | – | Channel to segment, by name, e.g. `.channel("DAPI")`. Looked up separately in each image, so it works when channel order differs between images. An unknown name fails with an error listing the available channels |
-| `.device(String)` | `"cpu"` | `"cpu"`, `"gpu"` (NVIDIA; `"gpu:1"` for a second GPU) or `"mps"` (Apple Silicon). If the device is not available, or the model fails on it, AxonPath logs a warning and continues on CPU |
+| `.device(String)` | `"cpu"` | `"cpu"`, `"gpu"` (the first NVIDIA GPU; `"gpu1"` for a second GPU) or `"mps"` (Apple Silicon). The older form `"gpu:1"` is also accepted. If the device is not available, or the model fails on it, AxonPath logs a warning and continues on CPU |
 | `.removeEdgeFibres(boolean)` | `false` | Remove fibres touching the boundary of the parent annotation. Useful when fibres cut by the annotation edge would bias measurements |
 | `.pixelSize(double)` | from `rdf.yaml` | Pixel size in µm the image is rescaled to before segmentation |
 | `.minDiameter(double)` | from `rdf.yaml` | Minimum object diameter in pixels, at the model's pixel size |

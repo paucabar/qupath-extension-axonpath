@@ -181,7 +181,13 @@ public class PredictionTools {
             range = 1;
         }
 
-        DjlTools.setOverrideDevice("PyTorch", Device.fromName(device));
+        // The override device is global to the DJL extension, so the previous value is restored
+        // afterwards; otherwise other PyTorch models run through DJL in this session would
+        // silently use AxonPath's device
+        Device inferenceDevice = Device.fromName(DeviceTools.normalise(device));
+        Device previousDevice = DjlTools.getOverrideDevice("PyTorch");
+        DjlTools.setOverrideDevice("PyTorch", inferenceDevice);
+        logger.info("Running inference on device: {}", inferenceDevice);
         ImagePlus prediction;
         try (var dnn = DjlTools.createDnnModel(modelUri, layout, inputShape)) {
             var op = ImageOps.buildImageDataOp()
@@ -198,6 +204,8 @@ public class PredictionTools {
             mat.close();
         } catch (Exception e) {
             throw new RuntimeException(e);
+        } finally {
+            DjlTools.setOverrideDevice("PyTorch", previousDevice);  // null removes the override
         }
 
         return prediction;

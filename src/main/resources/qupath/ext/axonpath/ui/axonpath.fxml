@@ -161,7 +161,7 @@
             </TitledPane>
 
             <!-- Additional Options -->
-            <TitledPane animated="false" expanded="false" maxHeight="Infinity" text="%ui.options.pane" VBox.vgrow="NEVER">
+            <TitledPane fx:id="hardwarePane" animated="false" expanded="false" maxHeight="Infinity" text="%ui.options.pane" VBox.vgrow="NEVER">
                 <VBox fx:id="hardwareBox" alignment="TOP_CENTER" spacing="7.5" styleClass="standard-padding">
                     <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
                         <padding>

@@ -1,5 +1,6 @@
 package qupath.ext.axonpath.core;
 
+import ai.djl.Device;
 import ai.djl.engine.Engine;
 import ai.djl.engine.EngineException;
 import org.slf4j.Logger;
@@ -37,7 +38,8 @@ public class PytorchManager {
     }
 
     /**
-     * Get the available devices for PyTorch, including MPS if Apple Silicon.
+     * Get the available devices for PyTorch, as DJL device names: {@code "gpu0"}, {@code "gpu1"}, ...
+     * for each GPU, {@code "mps"} on Apple Silicon, and always {@code "cpu"}.
      * @return Only "cpu" if no local engine is found.
      */
     public static Collection<String> getAvailableDevices() {
@@ -48,13 +50,14 @@ public class PytorchManager {
             if (engine == null) {
                 return List.of("cpu");
             }
-            // This is expected to return GPUs if available, or CPU otherwise
+            // This is expected to return GPUs if available, or CPU otherwise.
+            // GPUs are named with their index (e.g. "gpu0"), which is the form Device.fromName() accepts.
             for (var device : engine.getDevices()) {
-                String name = device.getDeviceType();
-                availableDevices.add(name);
+                String type = device.getDeviceType();
+                availableDevices.add(Device.Type.GPU.equals(type) ? type + device.getDeviceId() : type);
             }
-            // If we could use MPS, but don't have it already, add it
-            if (GeneralTools.isMac()) {
+            // MPS needs an arm64 Mac (and an arm64 Java); Intel Macs have no MPS support in PyTorch
+            if (GeneralTools.isMac() && "aarch64".equals(System.getProperty("os.arch"))) {
                 availableDevices.add("mps");
             }
             // CPU should always be available
