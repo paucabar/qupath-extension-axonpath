@@ -113,7 +113,8 @@ AxonPath objects (Fibre, InnerCylinder, Axon) cannot be used as parents.
 
 ## 7. Run
 
-Click **Run**. The parents are processed one at a time, with progress shown below the button.
+Click **Run**. The parents are processed one at a time, with progress shown below the button. The
+panel is disabled until all parents are processed.
 
 For each parent, AxonPath:
 
