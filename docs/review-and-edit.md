@@ -69,30 +69,66 @@ Draw the objects from the outside in, and **lock each one before drawing the nex
 Otherwise painting inside an unlocked object can change that object instead of creating a new one.
 
 1. Draw the fibre and set its class to `Fibre`. Lock it.
-2. EM only: draw the inner cylinder inside it and set its class to `InnerCylinder`. Lock it.
+2. Optional, only with inner cylinders: draw the inner cylinder inside it and set its class to
+   `InnerCylinder`. Lock it.
 3. Draw the axon inside it and set its class to `Axon`.
 
 Repeat for every missing fibre. You don't need to recompute after each one: when you have finished
 all your edits, select the parent and click **Recompute hierarchy & measurements** once.
 
-Every fibre needs an axon. In EM, where inner cylinders were segmented, a fibre you draw also needs
-an inner cylinder around its axon: Recompute does not create one, and removes fibres without one,
-together with their axons. Axons and inner cylinders that are not inside a fibre are removed too.
+Every fibre needs an axon. With inner cylinders, a fibre also needs an inner cylinder around its
+axon. If you skip step 2, Recompute creates one with the same shape as the axon, so the fibre is
+kept, but its inner tongue is empty and its `Myelin g-ratio` equals its `Axon g-ratio` (see
+[Measurements](measurements.md#g-ratios)). Draw the inner cylinder yourself if you need the myelin
+g-ratio of that fibre. Recompute only creates an inner cylinder for an axon that touches none; an
+axon partly inside an inner cylinder is removed. Axons and inner cylinders that are not inside a
+fibre are removed too.
 
 ## What Recompute does
 
 For each selected parent, Recompute:
 
-1. Collects the AxonPath annotations inside it, on the same z-slice and timepoint.
+1. Collects the AxonPath annotations inside it, on the same z-slice and timepoint. If there is no
+   `Fibre` among them, the parent is skipped and nothing is changed.
 2. Converts them back to detections.
-3. Rebuilds the hierarchy as segmentation does: each inner cylinder is assigned to the fibre that
-   contains it, each axon to the inner cylinder (EM) or fibre (brightfield) that contains it, and
-   objects outside any fibre, or fibres missing their contents, are removed.
-4. Recomputes all [measurements](measurements.md).
+3. Decides whether to work with inner cylinders (see [below](#with-or-without-inner-cylinders)).
+4. With inner cylinders, creates any missing inner cylinders (see
+   [Drawing a missing fibre](#drawing-a-missing-fibre)). Without them, removes any inner cylinders.
+5. Rebuilds the hierarchy as segmentation does: each inner cylinder is assigned to the fibre that
+   contains it, each axon to the inner cylinder (with inner cylinders) or fibre (without) that
+   contains it, and objects outside any fibre, or fibres missing their contents, are removed.
+6. Recomputes all [measurements](measurements.md).
 
 So an object you draw only needs the right class and position; its place in the hierarchy is worked
 out for you. A child object must lie (at least 90%) inside its parent object to be assigned to it;
 parts sticking out of the parent are clipped.
+
+When Recompute finishes, a notification says how many regions were recomputed with and without
+inner cylinders, and how many inner cylinders were created or removed.
+
+### With or without inner cylinders
+
+Run stores the [Predict inner cylinder](segmentation.md#predict-inner-cylinder) setting on the
+parent as `AxonPath inner cylinders`, and Recompute uses it, whatever the model or image type.
+
+If no setting is stored, Recompute guesses: **with inner cylinders if any `InnerCylinder` is inside
+the parent**, without them otherwise. This happens when:
+
+- you annotated the parent from scratch, without running AxonPath on it;
+- the project was segmented with AxonPath v0.1.0 or v0.1.1;
+- the parent was merged with another annotation or recreated.
+
+The notification says when the setting was guessed. A single stray `InnerCylinder` makes the guess
+"with inner cylinders", so delete it if that is not what you want. To set the value yourself, run
+AxonPath on the parent again, or run this script with the parents selected (use `"true"` for inner
+cylinders):
+
+```groovy
+getSelectedObjects().each { it.getMetadata().put("AxonPath inner cylinders", "false") }
+```
+
+To go back to guessing, remove the value instead:
+`getSelectedObjects().each { it.getMetadata().remove("AxonPath inner cylinders") }`.
 
 Converting and recomputing create new objects. This means `Axon ID` from [3D tracing](tracing.md) is
 removed, and object IDs change. Run tracing and export measurements after your last recompute.

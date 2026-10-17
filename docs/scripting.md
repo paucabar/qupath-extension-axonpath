@@ -86,7 +86,7 @@ def segmenter = AxonPathSegmenter
 | `.removeEdgeFibres(boolean)` | `false` | Remove fibres touching the boundary of the parent annotation. Useful when fibres cut by the annotation edge would bias measurements |
 | `.pixelSize(double)` | from `rdf.yaml` | Pixel size in µm the image is rescaled to before segmentation |
 | `.minDiameter(double)` | from `rdf.yaml` | Minimum object diameter in pixels, at the model's pixel size |
-| `.predictInnerCylinder(boolean)` | from `rdf.yaml` | Segment inner cylinders (EM models) |
+| `.predictInnerCylinder(boolean)` | from `rdf.yaml` | Segment inner cylinders (on by default for the EM models). The value used is stored on each parent for Recompute |
 
 The last three override the model's defaults and are the same as the *Model parameters* in the
 panel; see [Segmentation](segmentation.md#3-check-the-model-parameters) before changing them.

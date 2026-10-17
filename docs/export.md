@@ -16,7 +16,7 @@ The current image is saved before the dialog opens, so unsaved results are inclu
 Exports the measurements of one object class, from the selected images, into a single table.
 
 **For g-ratios and fibre morphometry, export `Fibre`.** Each fibre row already includes the axon
-measurements (`Axon Area`, `Axon Count`, `Axon g-ratio`), the EM inner cylinder measurements and the
+measurements (`Axon Area`, `Axon Count`, `Axon g-ratio`), the inner cylinder measurements (when segmented with inner cylinders) and the
 intensities of every compartment (see [Measurements](measurements.md#fibre-measurements)). Export
 `Axon` or `InnerCylinder` only if you need one row per object, e.g. to analyse the individual axons
 of fibres with several axons.

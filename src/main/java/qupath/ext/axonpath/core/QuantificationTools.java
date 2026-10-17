@@ -29,8 +29,8 @@ import qupath.lib.roi.interfaces.ROI;
  *   <li>{@link #computeFeatures} — shape metrics (area, circularity, solidity, g-ratio)</li>
  *   <li>{@link #computeIntensityFeatures} — per-compartment intensity statistics</li>
  * </ul>
- * Both methods support either Fibre &gt; InnerCylinder &gt; Axon (EM) or Fibre &gt; Axon
- * (brightfield) hierarchy structures.
+ * Both methods support either the Fibre &gt; InnerCylinder &gt; Axon (with inner cylinders) or the
+ * Fibre &gt; Axon (without inner cylinders) hierarchy structure.
  */
 public class QuantificationTools {
 
@@ -70,7 +70,11 @@ public class QuantificationTools {
     }
 
     public static void computeFeatures(ImageData<BufferedImage> imageData, Collection<PathObject> fibres) {
-        var calibration = imageData.getServer().getPixelCalibration();
+        computeFeatures(imageData.getServer().getPixelCalibration(), fibres);
+    }
+
+    /** As {@link #computeFeatures(ImageData, Collection)}, with only the calibration (no image server needed). */
+    static void computeFeatures(PixelCalibration calibration, Collection<PathObject> fibres) {
         requireIsotropicPixels(calibration);
         double pixelHeight = calibration.getPixelHeightMicrons();
         double pixelWidth = calibration.getPixelWidthMicrons();
@@ -165,8 +169,11 @@ public class QuantificationTools {
      * All compartment measurements are stored on the Fibre object for unified export:
      * <ul>
      *   <li>{@code "Fibre: <channel>: <stat>"} — whole fibre ROI</li>
-     *   <li>{@code "Myelin: <channel>: <stat>"} — fibre minus union of InnerCylinders (EM) or Axons (brightfield)</li>
-     *   <li>{@code "InnerTongue: <channel>: <stat>"} — union of InnerCylinders minus union of Axons (EM only)</li>
+     *   <li>{@code "Myelin: <channel>: <stat>"} — fibre minus union of InnerCylinders (with inner cylinders)
+     *       or Axons (without)</li>
+     *   <li>{@code "InnerTongue: <channel>: <stat>"} — union of InnerCylinders minus union of Axons (with
+     *       inner cylinders only; absent when the inner tongue is empty, e.g. an inner cylinder that
+     *       Recompute created from the axon)</li>
      *   <li>{@code "Axon: <channel>: <stat>"} — union of all Axon ROIs</li>
      * </ul>
      * Individual Axon objects also receive direct measurements ({@code "<channel>: <stat>"})
@@ -196,7 +203,7 @@ public class QuantificationTools {
         ROI fibreROI = fibre.getROI();
 
         if (withInnerCylinders) {
-            // EM mode: Fibre > InnerCylinder > Axon
+            // With inner cylinders: Fibre > InnerCylinder > Axon
             List<ROI> icROIs = fibre.getChildObjects().stream()
                     .filter(it -> it.getPathClass() == PathClass.getInstance("InnerCylinder"))
                     .map(PathObject::getROI)
@@ -236,7 +243,7 @@ public class QuantificationTools {
             }
 
         } else {
-            // Brightfield mode: Fibre > Axon
+            // Without inner cylinders: Fibre > Axon
             List<ROI> axonROIs = fibre.getChildObjects().stream()
                     .filter(it -> it.getPathClass() == PathClass.getInstance("Axon"))
                     .map(PathObject::getROI)

@@ -17,17 +17,21 @@ Measurements are computed after [segmentation](segmentation.md) and recomputed a
 
 ## Object hierarchy
 
-Measurements depend on which objects a fibre contains:
+Measurements depend on which objects a fibre contains, which depends on the
+[Predict inner cylinder](segmentation.md#predict-inner-cylinder) setting, not on the image type:
 
-| Imaging mode | Hierarchy |
+| Predict inner cylinder | Hierarchy |
 |---|---|
-| Electron microscopy (inner cylinder prediction on) | Fibre → InnerCylinder → Axon |
-| Brightfield (inner cylinder prediction off) | Fibre → Axon |
+| On (default for the EM models) | Fibre → InnerCylinder → Axon |
+| Off (default for the brightfield model) | Fibre → Axon |
 
-A **Fibre** is the whole myelinated fibre: axon, inner tongue (EM only) and myelin sheath. An
+A **Fibre** is the whole myelinated fibre: axon, inner tongue and myelin sheath. An
 **InnerCylinder** is the region inside the myelin sheath (axon plus inner tongue). An **Axon** is
 the axon itself; in brightfield images, where the inner tongue cannot be resolved, it also includes
 the inner tongue. A fibre can contain more than one axon.
+
+The setting used is stored on the parent as `AxonPath inner cylinders`, so that Recompute rebuilds
+the same hierarchy (see [Review & Edit](review-and-edit.md#what-recompute-does)).
 
 Fibres missing a required child (e.g. no axon) are removed during segmentation, so every fibre in the
 results has a complete hierarchy.
@@ -46,8 +50,8 @@ Stored on each **Fibre** object.
 | `Axon Area` | µm² | Total area of all axons in the fibre |
 | `Axon Count` | – | Number of axons in the fibre |
 | `Axon g-ratio` | – | Axon diameter / fibre diameter (see [g-ratios](#g-ratios)) |
-| `InnerCylinder Area` | µm² | Total area of all inner cylinders in the fibre. **EM only** |
-| `Myelin g-ratio` | – | Inner cylinder diameter / fibre diameter (see [g-ratios](#g-ratios)). **EM only** |
+| `InnerCylinder Area` | µm² | Total area of all inner cylinders in the fibre. **With inner cylinders only** |
+| `Myelin g-ratio` | – | Inner cylinder diameter / fibre diameter (see [g-ratios](#g-ratios)). **With inner cylinders only** |
 
 ### Intensity
 
@@ -58,8 +62,8 @@ the Fibre so that a single row describes the whole fibre. Names follow the patte
 | Compartment | Region measured |
 |---|---|
 | `Fibre` | The whole fibre |
-| `Myelin` | The fibre minus its inner cylinders (EM) or minus its axons (brightfield) |
-| `InnerTongue` | The inner cylinders minus the axons. **EM only** |
+| `Myelin` | The fibre minus its inner cylinders (with inner cylinders) or minus its axons (without) |
+| `InnerTongue` | The inner cylinders minus the axons. **With inner cylinders only**; absent if the inner tongue is empty |
 | `Axon` | All axons in the fibre, combined |
 
 `<channel>` is the channel name as shown in QuPath (e.g. `Channel 1`, or `Red`, `Green`, `Blue` for
@@ -83,7 +87,7 @@ Stored on each **Axon** object, for per-axon analysis (useful in fibres with sev
 
 ## InnerCylinder measurements
 
-Stored on each **InnerCylinder** object (EM only).
+Stored on each **InnerCylinder** object (with inner cylinders only).
 
 | Measurement | Unit | Definition |
 |---|---|---|
@@ -112,13 +116,19 @@ same area as the object, 2 × √(area / π). This makes them robust to non-circ
 them to be computed for fibres with several axons.
 
 - **Axon g-ratio** = axon diameter / fibre diameter, using the total axon area of the fibre.
-- **Myelin g-ratio** (EM only) = inner cylinder diameter / fibre diameter, using the total inner
-  cylinder area of the fibre. This is the ratio between the inner and outer boundaries of the myelin
-  sheath. Unlike the axon g-ratio, it does not count the inner tongue as part of the myelin.
+- **Myelin g-ratio** (with inner cylinders only) = inner cylinder diameter / fibre diameter, using
+  the total inner cylinder area of the fibre. This is the ratio between the inner and outer
+  boundaries of the myelin sheath. Unlike the axon g-ratio, it does not count the inner tongue as part
+  of the myelin.
 
-In brightfield mode only the axon g-ratio is available, because inner cylinders are not segmented.
-There the axon includes the inner tongue (which cannot be resolved), so the axon g-ratio measures the
-same boundary as the EM myelin g-ratio.
+Without inner cylinders only the axon g-ratio is available. In brightfield images the axon includes
+the inner tongue (which cannot be resolved), so there the axon g-ratio measures the same boundary as
+the myelin g-ratio does in EM.
+
+If you draw a fibre with only an axon and Recompute creates its inner cylinder (see
+[Review & Edit](review-and-edit.md#drawing-a-missing-fibre)), the inner cylinder has the axon's
+shape. Its inner tongue is empty, so its `Myelin g-ratio` equals its `Axon g-ratio` and it has no
+`InnerTongue` intensities.
 
 ## After manual edits
 

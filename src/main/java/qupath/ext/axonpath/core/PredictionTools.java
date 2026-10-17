@@ -56,11 +56,12 @@ import java.awt.image.BufferedImage;
  * runs inference on a selected image region, and returns segmented objects
  * organised into a meaningful hierarchy:
  * <ul>
- *   <li>Electron microscopy: Fibre &gt; InnerCylinder &gt; Axon</li>
- *   <li>Brightfield: Fibre &gt; Axon</li>
+ *   <li>With inner cylinders: Fibre &gt; InnerCylinder &gt; Axon</li>
+ *   <li>Without inner cylinders: Fibre &gt; Axon</li>
  * </ul>
- * Whether inner cylinders are predicted is controlled by the {@code predict_inner_cylinder}
- * flag in the model's rdf.yaml config.
+ * Whether inner cylinders are predicted defaults to the {@code predict_inner_cylinder} flag in
+ * the model's rdf.yaml config (on for the EM models, off for brightfield) and can be overridden.
+ * The setting used is stored on the parent (see {@link AxonPathMetadata}) for Recompute.
  * <p>
  * Requires the DJL extension and PyTorch engine to be available in QuPath.
  * See <a href="https://qupath.readthedocs.io/en/stable/docs/deep/djl.html">the QuPath docs</a>.
@@ -540,8 +541,11 @@ public class PredictionTools {
         axons = fillHoles(axons);
         innerCylinders = fillHoles(innerCylinders);
 
-        // Build hierarchy and optionally remove edge fibres before quantification
-        HierarchyTools.updateHierarchy(imageData.getHierarchy(), parentObject, fibres, axons, innerCylinders);
+        // Build hierarchy and optionally remove edge fibres before quantification. The structure
+        // follows the setting, not the objects found: with inner cylinders on, a parent where none
+        // were found gets no fibres, matching what Recompute rebuilds from the stored setting.
+        HierarchyTools.updateHierarchy(imageData.getHierarchy(), parentObject, fibres, axons, innerCylinders,
+                predictInnerCylinderFlag);
 
         if (removeEdgeFibres) {
             FilterTools.removeFibresTouchingBoundary(parentObject, imageData.getHierarchy());
@@ -556,6 +560,7 @@ public class PredictionTools {
         if (!parentObject.isLocked()) {
             parentObject.setLocked(true);
         }
+        AxonPathMetadata.storeInnerCylinderMode(parentObject, predictInnerCylinderFlag);
 
         // Return what actually ended up in the hierarchy: updateHierarchy() replaces objects with
         // clipped copies and drops incomplete fibres, so the raw fibres/axons lists are stale here

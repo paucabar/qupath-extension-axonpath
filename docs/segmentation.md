@@ -69,11 +69,19 @@ Lower it if small fibres or axons are missed; raise it if small spurious objects
 
 ### Predict inner cylinder
 
-Segment inner cylinders (axon plus inner tongue). This gives the full EM hierarchy, Fibre →
-InnerCylinder → Axon, and the EM-only measurements (`InnerCylinder Area`, `Myelin g-ratio`,
-`InnerTongue` intensities; see [Measurements](measurements.md)).
+Segment inner cylinders (axon plus inner tongue). This gives the hierarchy Fibre → InnerCylinder →
+Axon and the inner cylinder measurements (`InnerCylinder Area`, `Myelin g-ratio`, `InnerTongue`
+intensities; see [Measurements](measurements.md)). When off, the hierarchy is Fibre → Axon.
 
-On by default for EM models and off for brightfield, where the inner tongue cannot be resolved.
+On by default for EM models and off for brightfield, where the inner tongue cannot be resolved. You
+can change it for any model; what matters for the results is this setting, not the image type.
+
+When on, every fibre needs an inner cylinder containing its axon, so a region where the model finds
+no inner cylinders gets no fibres.
+
+AxonPath stores the setting on each parent it processes, as `AxonPath inner cylinders` (`true` or
+`false`, shown as a column in the annotation measurement table). Recompute uses it to rebuild the
+same hierarchy after [manual edits](review-and-edit.md#what-recompute-does).
 
 ### Remove edge fibres
 
@@ -121,11 +129,12 @@ For each parent, AxonPath:
 2. Turns the model output into fibres, axons and (optionally) inner cylinders.
 3. Keeps only objects inside the parent, clipping those crossing its boundary.
 4. Builds the hierarchy: each inner cylinder is assigned to the fibre containing it, and each axon to
-   the inner cylinder (EM) or fibre (brightfield) containing it.
-5. Removes incomplete objects: fibres without an axon (or, in EM, without an inner cylinder containing
-   an axon), and axons or inner cylinders not inside a fibre.
+   the inner cylinder (with inner cylinders) or fibre (without) containing it.
+5. Removes incomplete objects: fibres without an axon (or, with inner cylinders, without an inner
+   cylinder containing an axon), and axons or inner cylinders not inside a fibre.
 6. Computes [measurements](measurements.md) for every fibre and its contents.
-7. Locks the parent, so it is not moved or edited by accident.
+7. Locks the parent, so it is not moved or edited by accident, and stores the
+   [inner cylinder setting](#predict-inner-cylinder) on it.
 
 **Running again on the same parent replaces its previous results**, including manual corrections.
 Other annotations inside the parent are kept. Avoid running both a parent and an annotation nested
@@ -138,10 +147,10 @@ model.
 
 The results are detection objects, organised under each parent:
 
-| Imaging mode | Hierarchy |
+| Predict inner cylinder | Hierarchy |
 |---|---|
-| Electron microscopy (inner cylinder prediction on) | Fibre → InnerCylinder → Axon |
-| Brightfield (inner cylinder prediction off) | Fibre → Axon |
+| On (default for the EM models) | Fibre → InnerCylinder → Axon |
+| Off (default for the brightfield model) | Fibre → Axon |
 
 View them in the Hierarchy tab, and their measurements with **Measure → Show detection
 measurements**. See [Measurements](measurements.md) for what each measurement means.

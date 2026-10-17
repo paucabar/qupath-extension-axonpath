@@ -56,7 +56,7 @@ section of `rdf.yaml`, which become the defaults in the panel:
 |---|---|---|
 | `pixel_size` | number | Pixel size in µm the model was trained at |
 | `min_diameter` | number | Minimum object diameter in pixels, at the model's pixel size |
-| `predict_inner_cylinder` | `true` / `false` | Whether the model segments inner cylinders (EM) |
+| `predict_inner_cylinder` | `true` / `false` | Whether inner cylinders are segmented by default (`true` for the EM models). Can be changed in the panel or a script |
 
 ```yaml
 config:

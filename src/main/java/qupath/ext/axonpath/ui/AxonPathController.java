@@ -30,6 +30,7 @@ import org.controlsfx.dialog.ProgressDialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.axonpath.core.AxonPathClasses;
+import qupath.ext.axonpath.core.AxonPathMetadata;
 import qupath.ext.axonpath.core.DeviceTools;
 import qupath.ext.axonpath.core.HierarchyTools;
 import qupath.ext.axonpath.core.PredictionTools;
@@ -42,6 +43,7 @@ import qupath.fx.dialogs.FileChoosers;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.prefs.PathPrefs;
@@ -508,7 +510,18 @@ public class AxonPathController extends BorderPane {
         running.set(true);
         setStatusLabel(MessageFormat.format(
                 resources.getString("ui.run.progress"), 1, parents.size()));
-        Platform.runLater(() -> recomputeStep(imageData, parents, 0));
+        var summary = new RecomputeSummary();
+        Platform.runLater(() -> recomputeStep(imageData, parents, 0, summary));
+    }
+
+    /** Totals over one Recompute batch, reported in a single notification when it ends. */
+    private static final class RecomputeSummary {
+        int withInnerCylinders;
+        int withoutInnerCylinders;
+        int guessed;
+        int createdInnerCylinders;
+        int removedInnerCylinders;
+        int skipped;
     }
 
     /**
@@ -520,7 +533,8 @@ public class AxonPathController extends BorderPane {
      * Like {@link #runInferenceStep}, the {@code finally} block always either schedules the next
      * parent or ends the batch, so the panel is re-enabled whatever happens.
      */
-    private void recomputeStep(ImageData<BufferedImage> imageData, List<PathObject> parents, int index) {
+    private void recomputeStep(ImageData<BufferedImage> imageData, List<PathObject> parents, int index,
+                               RecomputeSummary summary) {
         Platform.runLater(() -> {
             boolean scheduleNext = false;
             try {
@@ -533,7 +547,7 @@ public class AxonPathController extends BorderPane {
                 if (parent.getParent() == null)
                     logger.warn("Parent {} was removed from the hierarchy during recompute, skipping", index);
                 else
-                    recomputeForParent(imageData, parent);
+                    recomputeForParent(imageData, parent, summary);
                 scheduleNext = index + 1 < parents.size();
             } catch (Exception e) {
                 logger.error("Recompute failed for parent {}", index, e);
@@ -542,21 +556,49 @@ public class AxonPathController extends BorderPane {
                 if (scheduleNext) {
                     setStatusLabel(MessageFormat.format(
                             resources.getString("ui.run.progress"), index + 2, parents.size()));
-                    recomputeStep(imageData, parents, index + 1);
+                    recomputeStep(imageData, parents, index + 1, summary);
                 } else {
-                    onRecomputeComplete();
+                    onRecomputeComplete(summary);
                 }
             }
         });
     }
 
-    private void onRecomputeComplete() {
-        logger.info("Hierarchy and measurements recomputed");
+    private void onRecomputeComplete(RecomputeSummary summary) {
+        int regions = summary.withInnerCylinders + summary.withoutInnerCylinders;
+        if (regions > 0)
+            logger.info("Hierarchy and measurements recomputed");
         // The listener on running refreshes the buttons and clears the progress text
         running.set(false);
+
+        // One notification for the whole batch, saying which inner cylinder setting was used and
+        // whether it came from the parent or was guessed, so the result is never a surprise
+        List<String> lines = new ArrayList<>();
+        if (regions > 0)
+            lines.add(MessageFormat.format(resources.getString("ui.recompute.summary"),
+                    regions, summary.withInnerCylinders, summary.withoutInnerCylinders));
+        if (summary.guessed > 0)
+            lines.add(MessageFormat.format(resources.getString("ui.recompute.guessed"), summary.guessed));
+        if (summary.createdInnerCylinders > 0)
+            lines.add(MessageFormat.format(resources.getString("ui.recompute.created-inner-cylinders"),
+                    summary.createdInnerCylinders));
+        if (summary.removedInnerCylinders > 0)
+            lines.add(MessageFormat.format(resources.getString("ui.recompute.removed-inner-cylinders"),
+                    summary.removedInnerCylinders));
+        if (summary.skipped > 0)
+            lines.add(MessageFormat.format(resources.getString("ui.recompute.skipped"), summary.skipped));
+        if (lines.isEmpty())
+            return;
+        String message = String.join("\n", lines);
+        logger.info("Recompute summary: {}", message.replace('\n', ' '));
+        if (summary.removedInnerCylinders > 0 || summary.skipped > 0)
+            Dialogs.showWarningNotification("AxonPath extension", message);
+        else
+            Dialogs.showInfoNotification("AxonPath extension", message);
     }
 
-    private void recomputeForParent(ImageData<BufferedImage> imageData, PathObject parentObject) {
+    private void recomputeForParent(ImageData<BufferedImage> imageData, PathObject parentObject,
+                                    RecomputeSummary summary) {
         var hierarchy = imageData.getHierarchy();
         var parentROI = parentObject.getROI();
         var parentPlane = parentROI.getImagePlane();
@@ -592,8 +634,13 @@ public class AxonPathController extends BorderPane {
                 })
                 .toList();
 
-        if (allAxonPath.isEmpty()) {
-            logger.info("No AxonPath objects found within selected parent, skipping");
+        // Checked before anything is removed: without a fibre nothing can be rebuilt, and removing
+        // first would silently delete axons or inner cylinders the user has drawn
+        boolean hasFibre = allAxonPath.stream()
+                .anyMatch(it -> it.getPathClass() == PathClass.getInstance("Fibre"));
+        if (!hasFibre) {
+            logger.info("No Fibre annotations found within selected parent, leaving it unchanged");
+            summary.skipped++;
             return;
         }
 
@@ -609,16 +656,39 @@ public class AxonPathController extends BorderPane {
         var axons = detections.stream()
                 .filter(it -> it.getPathClass() == PathClass.getInstance("Axon"))
                 .toList();
-        var innerCylinders = detections.stream()
+        List<PathObject> innerCylinders = detections.stream()
                 .filter(it -> it.getPathClass() == PathClass.getInstance("InnerCylinder"))
-                .toList();
+                .collect(Collectors.toCollection(ArrayList::new));
 
-        if (fibres.isEmpty()) {
-            logger.info("No Fibre objects found within selected parent, skipping");
-            return;
+        // Rebuild with the inner cylinder setting Run stored on the parent. Without one (objects
+        // drawn from scratch, projects from v0.1.0/0.1.1, a merged or recreated parent), guess as
+        // before: with inner cylinders if any overlaps the parent. The guess is not stored, so a
+        // wrong guess can be fixed by removing the stray inner cylinder and recomputing.
+        var stored = AxonPathMetadata.readInnerCylinderMode(parentObject);
+        boolean withInnerCylinders = stored.orElseGet(
+                () -> HierarchyTools.guessInnerCylinderMode(parentObject, innerCylinders));
+        logger.info("Recomputing {} inner cylinders ({})", withInnerCylinders ? "with" : "without",
+                stored.isPresent() ? "stored setting" : "no stored setting, guessed from the objects");
+        if (stored.isEmpty())
+            summary.guessed++;
+
+        if (withInnerCylinders) {
+            summary.withInnerCylinders++;
+            // A fibre drawn with only an axon would otherwise be removed for lacking an inner cylinder
+            var created = HierarchyTools.createMissingInnerCylinders(fibres, axons, innerCylinders);
+            if (!created.isEmpty())
+                logger.info("Created {} inner cylinder(s) from axons that had none", created.size());
+            innerCylinders.addAll(created);
+            summary.createdInnerCylinders += created.size();
+        } else {
+            summary.withoutInnerCylinders++;
+            if (!innerCylinders.isEmpty())
+                logger.warn("Removing {} inner cylinder(s): this parent is set to work without them",
+                        innerCylinders.size());
+            summary.removedInnerCylinders += innerCylinders.size();
         }
 
-        HierarchyTools.updateHierarchy(hierarchy, parentObject, fibres, axons, innerCylinders);
+        HierarchyTools.updateHierarchy(hierarchy, parentObject, fibres, axons, innerCylinders, withInnerCylinders);
 
         var validFibres = parentObject.getChildObjects().stream()
                 .filter(it -> it.getPathClass() == PathClass.getInstance("Fibre"))
