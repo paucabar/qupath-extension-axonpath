@@ -41,7 +41,7 @@ def segmenter = AxonPathSegmenter
     .removeEdgeFibres(false)      // Remove fibres touching the parent annotation boundary
 //  .pixelSize(0.02)              // Target pixel size in µm (default: from the model's rdf.yaml)
 //  .minDiameter(5)               // Minimum object diameter in pixels at the target pixel size (default: from rdf.yaml)
-//  .predictInnerCylinder(false)  // Segment inner cylinders, EM models only (default: from rdf.yaml)
+//  .predictInnerCylinder(false)  // Segment inner cylinders (default: from rdf.yaml, on for the EM models)
     .build()
 
 // Select parent annotations, excluding AxonPath objects

@@ -6,8 +6,8 @@ fibres in **electron microscopy** and **brightfield** images.
 AxonPath runs trained [AxonPath](https://github.com/paucabar/axonpath) models on regions you
 select and turns the predictions into a QuPath object hierarchy:
 
-- **Electron microscopy:** Fibre → InnerCylinder → Axon
-- **Brightfield:** Fibre → Axon
+- **With inner cylinders** (default for electron microscopy): Fibre → InnerCylinder → Axon
+- **Without inner cylinders** (default for brightfield): Fibre → Axon
 
 Every fibre gets morphometric measurements (areas, g-ratios, circularity, solidity, axon count)
 and per-compartment intensity statistics. The results can be corrected by hand and re-measured

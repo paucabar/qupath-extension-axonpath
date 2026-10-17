@@ -21,6 +21,11 @@ import static java.util.stream.Collectors.toCollection;
 public class HierarchyTools {
     private static final Logger logger = LoggerFactory.getLogger(HierarchyTools.class);
 
+    /** Intersection over child area above which a child is assigned to a parent unchanged. */
+    static final double IOC_ASSIGN = 0.9999;
+    /** Intersection over child area above which a child is clipped to the parent and assigned. */
+    static final double IOC_CLIP = 0.9;
+
     private HierarchyTools() {
         throw new UnsupportedOperationException("Do not instantiate this class");
     }
@@ -62,9 +67,19 @@ public class HierarchyTools {
     }
 
     /**
+     * Fraction of the child's area that lies inside the parent (intersection over child, IoC):
+     * 1 when the child is fully inside, 0 when they don't overlap.
+     */
+    static double intersectionOverChild(Geometry parentShape, Geometry childShape) {
+        if (childShape.getArea() <= 0 || !parentShape.intersects(childShape))
+            return 0;
+        return parentShape.intersection(childShape).getArea() / childShape.getArea();
+    }
+
+    /**
      * Assigns child objects to parents based on the intersection over child area (IoC).
-     * If IoC > 0.9999, the child is added directly.
-     * If IoC > 0.9, the child is clipped to the parent boundary before being added.
+     * If IoC > {@link #IOC_ASSIGN}, the child is added directly.
+     * If IoC > {@link #IOC_CLIP}, the child is clipped to the parent boundary before being added.
      */
     private static void assignChildrenToParents(Collection<PathObject> parents, Collection<PathObject> children) {
         for (var parent : parents) {
@@ -78,9 +93,9 @@ public class HierarchyTools {
 
                 double overlapRatio = overlap.getArea() / childShape.getArea();
 
-                if (overlapRatio > 0.9999) {
+                if (overlapRatio > IOC_ASSIGN) {
                     parent.addChildObject(child);
-                } else if (overlapRatio > 0.9) {
+                } else if (overlapRatio > IOC_CLIP) {
                     Geometry clipped = GeometryTools.homogenizeGeometryCollection(overlap);
                     ROI clippedROI = GeometryTools.geometryToROI(clipped, child.getROI().getImagePlane());
                     PathObject clippedChild = PathObjects.createDetectionObject(clippedROI, child.getPathClass());
@@ -91,26 +106,57 @@ public class HierarchyTools {
     }
 
     /**
-     * Builds the object hierarchy after AxonPath inference.
-     * If inner cylinders are present, the expected structure is Fibre > InnerCylinder > Axon.
-     * Otherwise, the expected structure is Fibre > Axon.
-     * Orphaned objects and fibres missing expected children are removed.
+     * Guesses whether a parent's objects should be built with inner cylinders: true if any inner
+     * cylinder overlaps the parent. Used when no setting is stored on the parent
+     * (see {@link AxonPathMetadata}), e.g. for objects drawn from scratch or older projects.
+     */
+    public static boolean guessInnerCylinderMode(PathObject rootObject, Collection<PathObject> innerCylinders) {
+        return !clipToParentBoundary(rootObject, innerCylinders).isEmpty();
+    }
+
+    /**
+     * Builds the object hierarchy, guessing the structure from the objects:
+     * with inner cylinders if any overlaps the parent (see {@link #guessInnerCylinderMode}).
+     * Kept for scripts that call it directly; AxonPath itself uses the explicit overload.
      */
     public static void updateHierarchy(PathObjectHierarchy hierarchy,
                                 PathObject rootObject,
                                 Collection<PathObject> fibres,
                                 Collection<PathObject> axons,
                                 Collection<PathObject> innerCylinders) {
+        updateHierarchy(hierarchy, rootObject, fibres, axons, innerCylinders,
+                guessInnerCylinderMode(rootObject, innerCylinders));
+    }
+
+    /**
+     * Builds the object hierarchy under {@code rootObject}.
+     * <ul>
+     *   <li>With inner cylinders: Fibre &gt; InnerCylinder &gt; Axon. A fibre needs an inner
+     *       cylinder containing an axon, and axons outside any inner cylinder are removed.</li>
+     *   <li>Without inner cylinders: Fibre &gt; Axon. Any inner cylinders passed in are ignored.</li>
+     * </ul>
+     * Orphaned objects and fibres missing expected children are removed.
+     *
+     * @param withInnerCylinders the inner cylinder setting to build with, normally the one stored on
+     *                           the parent by Run (see {@link AxonPathMetadata})
+     */
+    public static void updateHierarchy(PathObjectHierarchy hierarchy,
+                                PathObject rootObject,
+                                Collection<PathObject> fibres,
+                                Collection<PathObject> axons,
+                                Collection<PathObject> innerCylinders,
+                                boolean withInnerCylinders) {
 
         // Clip all objects to the actual parent annotation shape (bounding box may be larger)
         Collection<PathObject> boundedFibres = clipToParentBoundary(rootObject, fibres);
         Collection<PathObject> boundedAxons = clipToParentBoundary(rootObject, axons);
-        Collection<PathObject> boundedInnerCylinders = clipToParentBoundary(rootObject, innerCylinders);
+        Collection<PathObject> boundedInnerCylinders = withInnerCylinders
+                ? clipToParentBoundary(rootObject, innerCylinders) : List.of();
         logger.info("Clipped to parent boundary: fibres {} -> {}, axons {} -> {}, inner cylinders {} -> {}",
                 fibres.size(), boundedFibres.size(), axons.size(), boundedAxons.size(),
                 innerCylinders.size(), boundedInnerCylinders.size());
-
-        boolean withInnerCylinders = !boundedInnerCylinders.isEmpty();
+        if (!withInnerCylinders && !innerCylinders.isEmpty())
+            logger.info("Building without inner cylinders: ignoring {} inner cylinder(s)", innerCylinders.size());
 
         if (withInnerCylinders) {
             logger.info("Assigning {} inner cylinders to {} fibres", boundedInnerCylinders.size(), boundedFibres.size());
@@ -152,8 +198,38 @@ public class HierarchyTools {
     }
 
     /**
+     * Creates an inner cylinder for each axon that lies inside a fibre but touches no inner
+     * cylinder at all, with the same shape as the axon. Used by Recompute with inner cylinders, so
+     * that a fibre drawn with only an axon is kept instead of being removed.
+     * <p>
+     * For such a fibre the inner tongue is empty, so its myelin g-ratio equals its axon g-ratio.
+     * Axons partly inside an inner cylinder get none and are handled as before (clipped and
+     * assigned above {@link #IOC_CLIP}, removed otherwise), and axons outside every fibre are left
+     * to be removed as orphans.
+     *
+     * @return the new InnerCylinder detections, not yet added to the hierarchy
+     */
+    public static List<PathObject> createMissingInnerCylinders(Collection<PathObject> fibres,
+                                                               Collection<PathObject> axons,
+                                                               Collection<PathObject> innerCylinders) {
+        var fibreShapes = fibres.stream().map(f -> f.getROI().getGeometry()).toList();
+        var innerCylinderShapes = innerCylinders.stream().map(ic -> ic.getROI().getGeometry()).toList();
+        List<PathObject> created = new ArrayList<>();
+        for (var axon : axons) {
+            Geometry axonShape = axon.getROI().getGeometry();
+            boolean insideFibre = fibreShapes.stream()
+                    .anyMatch(f -> intersectionOverChild(f, axonShape) > IOC_CLIP);
+            boolean touchesInnerCylinder = innerCylinderShapes.stream()
+                    .anyMatch(ic -> intersectionOverChild(ic, axonShape) > 0);
+            if (insideFibre && !touchesInnerCylinder)
+                created.add(PathObjects.createDetectionObject(axon.getROI(), PathClass.getInstance("InnerCylinder")));
+        }
+        return created;
+    }
+
+    /**
      * Returns fibres that are missing their expected children.
-     * With inner cylinders: a valid fibre needs at least one inner tongue containing at least one axon.
+     * With inner cylinders: a valid fibre needs at least one inner cylinder containing at least one axon.
      * Without inner cylinders: a valid fibre needs at least one axon.
      */
     private static Collection<PathObject> findIncompleteFibres(Collection<PathObject> fibres, boolean withInnerCylinders) {
