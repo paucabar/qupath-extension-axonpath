@@ -23,6 +23,11 @@
     -fx-opacity:0.6;
     -fx-font-style: italic;
 }
+/* next-step hints: italic like standard-message, but not faded, so they are easy to read */
+.hint-message {
+    -fx-text-fill: -fx-text-base-color;
+    -fx-font-style: italic;
+}
 
 /* separator */
 .axonpath .separator {

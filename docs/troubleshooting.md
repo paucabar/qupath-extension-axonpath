@@ -67,9 +67,23 @@ stops it after the current parent.
 ## Export buttons are disabled
 
 **Export measurements** and **Export annotations** work on the images of a QuPath project, so they
-are disabled when an image is opened on its own. Create a project (**File → Project… → Create
+are disabled when an image is opened on its own; the Data Export section then says so. Create a
+project (**File → Project… → Create
 project**, in an empty folder), add your images to it and open them from the *Project* tab. See
 QuPath's [Projects](https://qupath.readthedocs.io/en/stable/docs/tutorials/projects.html) page.
+
+## Fibres, axons or inner cylinders changed class after using an object classifier
+
+QuPath's object classifiers (**Classify → Object classification**) choose the objects to classify by
+type (by default, all detections), not by class, and replace their classes. AxonPath results are
+detections, so a classifier applied to an image with AxonPath results also reclassifies the `Fibre`,
+`Axon` and `InnerCylinder` objects. AxonPath recognises its objects by class, so Recompute, 3D
+tracing and export then no longer find them.
+
+Apply object classifiers before running AxonPath, or on a copy of the image. To classify fibres,
+e.g. by size, export the `Fibre` measurements and classify them outside QuPath. If it has already
+happened, undo it if possible (**Edit → Undo**), or run AxonPath again on the affected parents; running again
+replaces any manual corrections.
 
 ## "No Fibre detections with children found — run AxonPath first"
 

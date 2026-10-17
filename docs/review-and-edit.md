@@ -41,6 +41,9 @@ they are converted to **annotations**, edited, and converted back when measureme
 5. **Lock** them again with the lock button if you want to protect them from further edits.
 6. **Select the parent** again and click **Recompute hierarchy & measurements**.
 
+After each of these buttons, a short hint under them says what to do next. It stays while you
+select and edit the fibres, and disappears when you select another parent.
+
 **Measurements are not updated while you edit.** They are recalculated only when you click
 **Recompute**, so always recompute before looking at or exporting the measurements.
 
@@ -62,6 +65,24 @@ page lists their keyboard shortcuts.
 - **Set its class:** right-click the object → **Set classification** → `Fibre`, `InnerCylinder` or
   `Axon`.
 - **Lock or unlock** an object: right-click it → **Annotations → Lock** / **Unlock**.
+
+### Editing tools
+
+QuPath's other editing commands are in the **Objects** menu. The ones most useful for correcting
+fibres:
+
+| Task | QuPath command | Notes |
+|---|---|---|
+| Join two pieces of one object | **Objects → Annotations → Merge selected** | Select the pieces first. The merged object is unlocked, and keeps the class only if all pieces had the same one, so merge objects of one class at a time. |
+| Separate two fibres drawn as one | **Objects → Annotations → Split annotations by lines...** | Draw a line across the object with the **Line** tool (`L`), select the object and the line, then run the command. The pieces keep the class and lock state. |
+| Separate the disconnected parts of one object | **Objects → Annotations → Split annotations** | |
+| Fill holes inside an object | **Objects → Annotations → Fill holes** | |
+| Copy an object | **Objects → Annotations → Duplicate selected annotations** (`Shift+D`) | |
+| Lock, unlock or toggle the lock of the selected objects | **Objects → Lock** | `Ctrl+Shift+K`, `Ctrl+Alt+K` and `Ctrl+K` (`Cmd` on Mac) |
+| Set the class of several objects | Select them, then right-click → **Set classification** | |
+
+These commands act on annotations, so convert the detections first. After any of them, select the
+parent and click **Recompute**.
 
 ### Drawing a missing fibre
 
@@ -88,7 +109,10 @@ fibre are removed too.
 
 For each selected parent, Recompute:
 
-1. Collects the AxonPath annotations inside it, on the same z-slice and timepoint. If there is no
+1. Collects the AxonPath annotations that belong to it: on the same z-slice and timepoint, and more
+   than half inside it (an axon or inner cylinder drawn inside a fibre counts if its fibre does).
+   Objects of a neighbouring parent that only touch the boundary are left alone. An object split
+   exactly half and half between two parents belongs to neither, so move it slightly. If there is no
    `Fibre` among them, the parent is skipped and nothing is changed.
 2. Converts them back to detections.
 3. Decides whether to work with inner cylinders (see [below](#with-or-without-inner-cylinders)).
