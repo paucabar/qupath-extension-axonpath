@@ -109,7 +109,10 @@ fibre are removed too.
 
 For each selected parent, Recompute:
 
-1. Collects the AxonPath annotations inside it, on the same z-slice and timepoint. If there is no
+1. Collects the AxonPath annotations that belong to it: on the same z-slice and timepoint, and more
+   than half inside it (an axon or inner cylinder drawn inside a fibre counts if its fibre does).
+   Objects of a neighbouring parent that only touch the boundary are left alone. An object split
+   exactly half and half between two parents belongs to neither, so move it slightly. If there is no
    `Fibre` among them, the parent is skipped and nothing is changed.
 2. Converts them back to detections.
 3. Decides whether to work with inner cylinders (see [below](#with-or-without-inner-cylinders)).

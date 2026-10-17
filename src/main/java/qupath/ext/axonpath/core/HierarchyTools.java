@@ -25,6 +25,8 @@ public class HierarchyTools {
     static final double IOC_ASSIGN = 0.9999;
     /** Intersection over child area above which a child is clipped to the parent and assigned. */
     static final double IOC_CLIP = 0.9;
+    /** Fraction of an AxonPath annotation's area inside a parent above which it belongs to that parent. */
+    static final double IOC_BELONGS = 0.5;
 
     private HierarchyTools() {
         throw new UnsupportedOperationException("Do not instantiate this class");
@@ -103,6 +105,52 @@ public class HierarchyTools {
                 }
             }
         }
+    }
+
+    /**
+     * Finds the AxonPath annotations (Fibre, InnerCylinder, Axon converted for editing, or drawn by
+     * hand) that belong to a parent: on the parent's z-slice and timepoint, and more than half
+     * ({@link #IOC_BELONGS}) inside the parent, either themselves or through an AxonPath ancestor.
+     * <p>
+     * This is the single rule used by Run's clean-up, Recompute, Lock/Unlock and the Review &amp;
+     * Edit buttons, so they all agree on what belongs to which region:
+     * <ul>
+     *   <li>Converted annotations are added to the hierarchy by shape, not under the parent, so they
+     *       are usually not its children; that is why they are looked up by geometry.</li>
+     *   <li>Each object belongs to the region holding most of it. A neighbouring region's fibre
+     *       that only touches this region's boundary is left alone, while a hand-drawn fibre that
+     *       sticks out a little is still collected (and later clipped).</li>
+     *   <li>Geometry tests are 2D, so the plane check keeps other z-slices out.</li>
+     * </ul>
+     */
+    public static List<PathObject> findAxonPathAnnotations(PathObjectHierarchy hierarchy, PathObject parent) {
+        return axonPathAnnotations(hierarchy, parent).toList();
+    }
+
+    /** Whether the parent has any AxonPath annotation, as {@link #findAxonPathAnnotations} defines it. */
+    public static boolean hasAxonPathAnnotations(PathObjectHierarchy hierarchy, PathObject parent) {
+        return axonPathAnnotations(hierarchy, parent).findAny().isPresent();
+    }
+
+    private static Stream<PathObject> axonPathAnnotations(PathObjectHierarchy hierarchy, PathObject parent) {
+        var plane = parent.getROI().getImagePlane();
+        Geometry parentShape = parent.getROI().getGeometry();
+        return hierarchy.getAnnotationObjects().stream()
+                .filter(it -> AxonPathClasses.isAxonPathClass(it.getPathClass()))
+                .filter(it -> it.getROI().getImagePlane().getZ() == plane.getZ()
+                        && it.getROI().getImagePlane().getT() == plane.getT())
+                .filter(it -> {
+                    for (PathObject o = it; o != null && AxonPathClasses.isAxonPathClass(o.getPathClass()); o = o.getParent()) {
+                        try {
+                            if (intersectionOverChild(parentShape, o.getROI().getGeometry()) > IOC_BELONGS)
+                                return true;
+                        } catch (RuntimeException e) {
+                            // e.g. a JTS TopologyException for an invalid hand-drawn shape
+                            logger.warn("Skipping {}: could not compare its shape with the parent ({})", o, e.getMessage());
+                        }
+                    }
+                    return false;
+                });
     }
 
     /**

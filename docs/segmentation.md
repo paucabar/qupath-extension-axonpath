@@ -140,6 +140,8 @@ For each parent, AxonPath:
    [inner cylinder setting](#predict-inner-cylinder) on it.
 
 **Running again on the same parent replaces its previous results**, including manual corrections.
+If the parent contains results converted to annotations for [editing](review-and-edit.md), the panel
+asks before replacing them. Scripts replace them without asking.
 Other annotations inside the parent are kept. Avoid running both a parent and an annotation nested
 inside it: their results overlap in the nested region.
 

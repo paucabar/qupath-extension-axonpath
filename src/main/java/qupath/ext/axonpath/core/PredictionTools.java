@@ -489,6 +489,14 @@ public class PredictionTools {
                 .toList();
         if (!previousResults.isEmpty())
             hierarchy.removeObjects(previousResults, false);
+        // Results converted to annotations for editing are not children of the parent, so they are
+        // found by shape. Without this, Run would leave them next to the new results, and Recompute
+        // would turn them into duplicate fibres.
+        var previousAnnotations = HierarchyTools.findAxonPathAnnotations(hierarchy, parentObject);
+        if (!previousAnnotations.isEmpty()) {
+            logger.info("Removing {} AxonPath annotation(s) from previous results", previousAnnotations.size());
+            hierarchy.removeObjects(previousAnnotations, false);
+        }
 
         double targetPixelSizeMicrons = pixelSize;
         double minDiameterPixels = minDiameter;
