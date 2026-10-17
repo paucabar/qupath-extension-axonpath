@@ -16,6 +16,9 @@ Open the panel from **Extensions → AxonPath → AxonPath**.
 - **Use a project** if you want to export measurements or annotations later. Export works on project
   images (see QuPath's [Projects](https://qupath.readthedocs.io/en/stable/docs/tutorials/projects.html)
   page).
+- **Image type:** QuPath asks for an image type when an image is opened. It has no electron
+  microscopy type, so choose **Other** for EM images. AxonPath does not use the image type, so this
+  does not change the results.
 - **Optional: display single-channel images in grayscale.** QuPath may show a single-channel image
   with a colour tint, which can make objects harder to see when editing. Open **View →
   Brightness/Contrast**, double-click the channel and set its colour to white. This only changes the

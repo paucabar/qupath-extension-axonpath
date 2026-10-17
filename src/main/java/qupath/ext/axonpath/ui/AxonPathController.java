@@ -43,6 +43,7 @@ import qupath.fx.dialogs.FileChoosers;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import qupath.lib.gui.QuPathGUI;
@@ -141,6 +142,12 @@ public class AxonPathController extends BorderPane {
     private Button exportMeasurementsButton;
     @FXML
     private Button exportAnnotationsButton;
+    @FXML
+    private Label exportNoProjectLabel;
+    @FXML
+    private Label reviewHintLabel;
+    /** The parents the current Review & Edit hint refers to. */
+    private Set<PathObject> reviewHintParents = Set.of();
 
     private double defaultPixelSize;
     private double defaultMinDiameter;
@@ -200,6 +207,14 @@ public class AxonPathController extends BorderPane {
         var noProject = QuPathGUI.getInstance().projectProperty().isNull();
         exportMeasurementsButton.disableProperty().bind(noProject);
         exportAnnotationsButton.disableProperty().bind(noProject);
+        // ...and say why they are disabled: JavaFX shows no tooltips on disabled buttons
+        exportNoProjectLabel.visibleProperty().bind(noProject);
+        exportNoProjectLabel.managedProperty().bind(noProject);
+
+        // The Review & Edit hint takes no space while empty. It is kept when the selection
+        // changes, because users click fibres while editing, and cleared when the image changes.
+        reviewHintLabel.visibleProperty().bind(reviewHintLabel.textProperty().isNotEmpty());
+        reviewHintLabel.managedProperty().bind(reviewHintLabel.visibleProperty());
 
         // Disable the panel while Run or Recompute is in progress. A disabled container also
         // disables everything inside it, so the per-control enable logic (the bindings above,
@@ -223,6 +238,7 @@ public class AxonPathController extends BorderPane {
                     refreshChannels(false);
                     refreshPostProcessingButtons();
                     updateDownsampleDisplay();
+                    reviewHintLabel.setText("");
                 });
         var currentImage = QuPathGUI.getInstance().getImageData();
         if (currentImage != null) currentImage.addPropertyChangeListener(serverMetadataListener);
@@ -235,6 +251,7 @@ public class AxonPathController extends BorderPane {
             public void selectedObjectChanged(qupath.lib.gui.viewer.QuPathViewer viewer, PathObject pathObjectSelected) {
                 refreshPostProcessingButtons();
                 refreshStatusLabel();
+                clearReviewHintIfOtherParentSelected();
             }
             @Override
             public void visibleRegionChanged(qupath.lib.gui.viewer.QuPathViewer viewer, java.awt.Shape shape) {}
@@ -272,7 +289,6 @@ public class AxonPathController extends BorderPane {
             Dialogs.showErrorMessage("AxonPath extension", resources.getString("ui.error.axonpath-selection"));
             return;
         }
-
         double pixelSize, minDiameter;
         try {
             pixelSize = Double.parseDouble(pixelSizeField.getText());
@@ -281,6 +297,9 @@ public class AxonPathController extends BorderPane {
             Dialogs.showErrorMessage("AxonPath extension", resources.getString("ui.error.invalid-params"));
             return;
         }
+
+        // Run replaces the results, so an earlier Review & Edit hint no longer applies
+        reviewHintLabel.setText("");
         // Picks up a PyTorch engine (and its GPUs) downloaded since the panel was opened
         refreshDevices();
         var settings = new RunSettings(modelPath, QP.getCurrentImageData(), getSelectedChannel(), getDevice(),
@@ -416,6 +435,32 @@ public class AxonPathController extends BorderPane {
         hierarchy.fireHierarchyChangedEvent(this);
 
         refreshPostProcessingButtons();
+        setReviewHint("ui.review.hint.converted", annotations.size());
+    }
+
+    /**
+     * Shows a next-step hint under the Review &amp; Edit buttons, for the parents selected now.
+     * The hint is kept while the user clicks fibres to edit them, and cleared when another
+     * parent is selected (see {@link #clearReviewHintIfOtherParentSelected()}).
+     */
+    private void setReviewHint(String key, Object... args) {
+        reviewHintLabel.setText(MessageFormat.format(resources.getString(key), args));
+        reviewHintParents = QP.getSelectedObjects().stream()
+                .filter(p -> !isAxonPathClass(p))
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * Clears the hint if the selection now includes a parent it was not written for. Selecting
+     * only AxonPath objects (while editing) or nothing keeps it.
+     */
+    private void clearReviewHintIfOtherParentSelected() {
+        if (reviewHintLabel.getText().isEmpty())
+            return;
+        boolean otherParent = QP.getSelectedObjects().stream()
+                .anyMatch(p -> !isAxonPathClass(p) && !reviewHintParents.contains(p));
+        if (otherParent)
+            reviewHintLabel.setText("");
     }
 
     /**
@@ -428,19 +473,28 @@ public class AxonPathController extends BorderPane {
 
     @FXML
     private void lockAnnotations() {
-        setAxonPathAnnotationsLocked(true);
+        int count = setAxonPathAnnotationsLocked(true);
         lockAnnotationsButton.setSelected(false);
+        if (count > 0)
+            setReviewHint("ui.review.hint.locked", count);
+        else
+            setReviewHint("ui.review.hint.none-found");
     }
 
     @FXML
     private void unlockAnnotations() {
-        setAxonPathAnnotationsLocked(false);
+        int count = setAxonPathAnnotationsLocked(false);
         unlockAnnotationsButton.setSelected(false);
+        if (count > 0)
+            setReviewHint("ui.review.hint.unlocked", count);
+        else
+            setReviewHint("ui.review.hint.none-found");
     }
 
-    private void setAxonPathAnnotationsLocked(boolean locked) {
+    /** @return the number of AxonPath annotations found under the selected parents */
+    private int setAxonPathAnnotationsLocked(boolean locked) {
         var imageData = QP.getCurrentImageData();
-        if (imageData == null) return;
+        if (imageData == null) return 0;
         var hierarchy = imageData.getHierarchy();
         var allAxonPathAnnotations = hierarchy.getFlattenedObjectList(null).stream()
                 .filter(it -> isAxonPathClass(it) && it.isAnnotation())
@@ -474,9 +528,10 @@ public class AxonPathController extends BorderPane {
                 })
                 .distinct()
                 .toList();
-        if (toUpdate.isEmpty()) return;
+        if (toUpdate.isEmpty()) return 0;
         toUpdate.forEach(it -> it.setLocked(locked));
         hierarchy.fireHierarchyChangedEvent(this);
+        return toUpdate.size();
     }
 
     @FXML
@@ -516,6 +571,7 @@ public class AxonPathController extends BorderPane {
 
     /** Totals over one Recompute batch, reported in a single notification when it ends. */
     private static final class RecomputeSummary {
+        int fibres;
         int withInnerCylinders;
         int withoutInnerCylinders;
         int guessed;
@@ -566,8 +622,13 @@ public class AxonPathController extends BorderPane {
 
     private void onRecomputeComplete(RecomputeSummary summary) {
         int regions = summary.withInnerCylinders + summary.withoutInnerCylinders;
-        if (regions > 0)
+        if (regions > 0) {
             logger.info("Hierarchy and measurements recomputed");
+            // The hint gives the next step; the inner cylinder details are in the notification below
+            setReviewHint("ui.review.hint.recomputed", summary.fibres, regions);
+        } else {
+            reviewHintLabel.setText("");
+        }
         // The listener on running refreshes the buttons and clears the progress text
         running.set(false);
 
@@ -695,6 +756,7 @@ public class AxonPathController extends BorderPane {
                 .toList();
         QuantificationTools.computeFeatures(imageData, validFibres);
         QuantificationTools.computeIntensityFeatures(imageData, validFibres);
+        summary.fibres += validFibres.size();
     }
 
     @FXML

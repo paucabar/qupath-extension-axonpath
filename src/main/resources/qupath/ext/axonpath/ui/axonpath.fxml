@@ -206,6 +206,8 @@
                             text="%ui.postprocess.recompute" onAction="#recompute">
                         <tooltip><Tooltip text="%ui.postprocess.recompute.tooltip" /></tooltip>
                     </Button>
+                    <!-- Next-step hint after Convert, Lock, Unlock and Recompute; hidden while empty -->
+                    <Label fx:id="reviewHintLabel" styleClass="hint-message" wrapText="true" maxWidth="Infinity" />
                 </VBox>
             </TitledPane>
             <!-- 3D Tracing -->
@@ -235,6 +237,9 @@
                     <padding>
                         <Insets left="10" right="10" top="10" bottom="10" />
                     </padding>
+                    <!-- Shown only without a project: tooltips are not shown on disabled buttons -->
+                    <Label fx:id="exportNoProjectLabel" styleClass="hint-message" wrapText="true" maxWidth="Infinity"
+                           text="%ui.export.no-project" />
                     <Button fx:id="exportMeasurementsButton" prefWidth="252.0" disable="true"
                             text="%ui.export.open" onAction="#openExportDialog">
                         <tooltip><Tooltip text="%ui.export.open.tooltip" /></tooltip>
